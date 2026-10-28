@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaudeCal</title>
+<meta name="description" content="대충 적으면 구글 캘린더 일정이 되는 Windows 위젯">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">✱</div>
+    <h1>ClaudeCal</h1>
+  </header>
+  <p class="lead">대충 적으면 일정이 되는 Windows 위젯</p>
+
+  <p>화면 오른쪽 아래에 있는 작은 버튼을 누르고 한 줄로 적은 뒤 Enter를 누르면, 날짜와 시간을 알아서 읽어 구글 캘린더에 일정을 넣어 줘요.
+     일정 보기, 수정, 삭제, 반복 일정, 일정 전 알림도 이 위젯 하나로 할 수 있어요.</p>
+
+  <div class="card">
+    <table>
+      <tr><th>이렇게 적으면</th><th>이렇게 돼요</th></tr>
+      <tr><td><code>11/20 금 3시 조합론 시험</code></td><td>11월 20일(금) 15:00 일정 등록</td></tr>
+      <tr><td><code>매주 화목 3시 수업 12월까지</code></td><td>12월까지 반복 일정 등록</td></tr>
+      <tr><td><code>시험 4시반으로 미뤄줘</code></td><td>그 일정 시간 바꾸기</td></tr>
+      <tr><td><code>이번주 일정</code></td><td>이번 주 일정 보여 주기</td></tr>
+    </table>
+  </div>
+
+  <h2>구글 캘린더를 쓰는 이유</h2>
+  <p>ClaudeCal은 사용자가 직접 연결을 허락했을 때만 구글 캘린더에 접근해요. 허락받는 권한은
+     <code>calendar.events</code> 하나이고, 다음 일에만 써요.</p>
+  <ul>
+    <li>위젯 화면(목록·주·월)에 내 일정 보여 주기</li>
+    <li>내가 입력하거나 고친 대로 일정 등록·수정·삭제하기</li>
+    <li>일정 시작 전에 Windows 알림 보내기</li>
+  </ul>
+  <p>ClaudeCal은 각자 PC에서 실행되는 프로그램이고, 따로 운영하는 서버가 없어요. 그래서 내 캘린더 정보가 개발자에게 전달되지 않아요.
+     자세한 내용은 <a href="privacy.html">개인정보처리방침</a>을 봐 주세요.</p>
+
+  <h2>누가 쓰나요</h2>
+  <p>개인이 만든 무료 프로그램이에요. 만든 사람과 친구들이 각자 PC에 설치해서 써요. 광고나 결제는 없어요.</p>
+
+  <p class="muted">ClaudeCal is a small, free Windows desktop widget that turns short notes typed in Korean into Google Calendar events.
+     It runs only on the user's own PC, requests the <code>calendar.events</code> scope only after the user agrees,
+     and never sends calendar data to the developer. See the <a href="privacy.html">Privacy Policy</a>.</p>
+
+  <nav>
+    <a href="privacy.html">개인정보처리방침 (Privacy Policy)</a>
+    <a href="https://github.com/yamchaewoo/claudecal/issues">문의하기</a>
+  </nav>
+</main>
+</body>
+</html>

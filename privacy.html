@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClaudeCal 개인정보처리방침</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">✱</div>
+    <h1>개인정보처리방침</h1>
+  </header>
+  <p class="lead">ClaudeCal · 시행일 2026년 10월 28일</p>
+
+  <div class="note">한 줄 요약: ClaudeCal은 내 PC에서만 돌아가요. 구글 캘린더 일정은 위젯을 쓰는 데에만 쓰고, 개발자에게 보내거나 팔지 않아요.
+    문장 해석을 위해 내가 넣은 <b>본인의</b> Claude API 키로 Anthropic에 필요한 만큼만 보내요.</div>
+
+  <h2>1. ClaudeCal은 어떻게 동작하나요</h2>
+  <p>ClaudeCal은 각자 Windows PC에 설치해서 쓰는 위젯이에요. 개발자가 운영하는 서버나 계정 시스템이 없어서,
+     사용자의 정보가 개발자에게 전달되지 않아요.</p>
+
+  <h2>2. 접근하는 구글 사용자 데이터</h2>
+  <p>사용자가 위젯 설정에서 <b>구글 캘린더 연결</b>을 누르고 구글 화면에서 허락했을 때만 접근해요.</p>
+  <ul>
+    <li><b>권한</b>: <code>https://www.googleapis.com/auth/calendar.events</code> (캘린더 일정 보기·만들기·수정·삭제)</li>
+    <li><b>읽는 정보</b>: 기본 캘린더 일정의 제목, 날짜·시간, 장소, 메모, 반복 규칙, 알림 설정</li>
+    <li><b>계정 이메일</b>: 설정 화면에 "어느 계정에 연결됐는지" 보여 주는 데에만 써요 (기본 캘린더 이름에서 읽어요)</li>
+  </ul>
+
+  <h2>3. 데이터를 쓰는 곳</h2>
+  <ul>
+    <li>위젯 화면(목록·주·월)에 일정 보여 주기</li>
+    <li>사용자가 입력하거나 고친 대로 일정 등록·수정·삭제하기, 되돌리기</li>
+    <li>일정 시작 전 Windows 알림 보내기</li>
+    <li>사용자가 원할 때 이 PC에 저장해 둔 일정을 구글 캘린더로 옮기기</li>
+  </ul>
+  <p>광고, 판매, 분석, 신용 평가 등 다른 목적으로는 쓰지 않아요.</p>
+
+  <h2>4. 저장하는 곳</h2>
+  <p>모든 정보는 사용자 PC의 <code>%APPDATA%\ClaudeCal</code> 폴더에만 저장돼요.</p>
+  <ul>
+    <li>구글 로그인 토큰(구글 캘린더에 접근하기 위한 열쇠)과 연결된 계정 이메일</li>
+    <li>설정 (단축키, 알림 시간, 사용자가 넣은 Claude API 키 등)</li>
+    <li>구글을 연결하지 않았을 때의 일정, 그리고 구글로 옮길 때 남기는 백업 파일</li>
+  </ul>
+  <p>구글 캘린더 일정 자체는 구글 캘린더에 저장돼요. 위젯은 화면과 알림을 위해 켜져 있는 동안만 메모리에 들고 있어요.
+     최근 입력과 되돌리기 기록도 메모리에만 있고, 위젯을 끄면 사라져요.</p>
+
+  <h2>5. 다른 곳으로 보내는 정보</h2>
+  <p>"모레 저녁 7시 동기 모임" 같은 문장을 해석하기 위해, 사용자가 직접 넣은 <b>본인의</b> Anthropic API 키(또는 본인의 Claude Code 로그인)로
+     Anthropic의 Claude에 다음 내용을 보내요.</p>
+  <ul>
+    <li>사용자가 입력한 문장</li>
+    <li>가까운 날짜 일정의 제목, 날짜·시간, 장소, 반복 여부 ("시험 미뤄줘"처럼 기존 일정을 고칠 때 어떤 일정인지 찾기 위해서예요. 메모는 보내지 않아요.)</li>
+  </ul>
+  <p>날짜·시간·제목만 있는 단순한 입력은 Claude에 보내지 않고 PC에서 바로 처리해요.
+     Anthropic이 받은 정보를 다루는 방식은 <a href="https://www.anthropic.com/legal/privacy">Anthropic 개인정보처리방침</a>을 따라요.
+     이 밖에는 어떤 제3자에게도 구글 사용자 데이터를 보내거나 팔지 않아요.</p>
+
+  <h2>6. Google API 서비스 사용자 데이터 정책 준수</h2>
+  <p>ClaudeCal이 Google API에서 받은 정보를 쓰고 다른 앱으로 보내는 방식은
+     <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>의
+     제한적 사용(Limited Use) 요구 사항을 포함해 그 정책을 따라요.
+     구글 사용자 데이터를 AI 모델 학습에 쓰지 않고, 사람이 읽지도 않아요.</p>
+
+  <h2>7. 연결 해제와 삭제</h2>
+  <ul>
+    <li>위젯 <b>⋯ → 설정 → 구글 캘린더 → 연결 해제</b>를 누르면 PC에 저장된 구글 로그인 토큰이 지워져요.</li>
+    <li><a href="https://myaccount.google.com/connections">구글 계정 → 서드 파티 연결</a>에서 ClaudeCal의 접근 권한을 언제든 없앨 수 있어요.</li>
+    <li><code>%APPDATA%\ClaudeCal</code> 폴더를 지우면 PC에 남은 모든 정보가 지워져요.</li>
+  </ul>
+
+  <h2>8. 어린이</h2>
+  <p>ClaudeCal은 만 14세 미만 어린이를 위한 서비스가 아니에요.</p>
+
+  <h2>9. 바뀔 때</h2>
+  <p>이 방침이 바뀌면 이 페이지에 새 내용과 시행일을 올려요.</p>
+
+  <h2>10. 문의</h2>
+  <p>궁금한 점은 <a href="https://github.com/yamchaewoo/claudecal/issues">문의 게시판</a>에 남겨 주세요.</p>
+
+  <h2>English summary</h2>
+  <div class="card muted">
+    <p>ClaudeCal is a desktop widget that runs only on the user's own Windows PC; the developer operates no server and receives no user data.
+       With the user's consent it uses the Google Calendar scope <code>calendar.events</code> solely to display, create, edit and delete the user's
+       events and to show reminders. The OAuth token, the connected account's email address and settings are stored locally in <code>%APPDATA%\ClaudeCal</code>.
+       To interpret free-text input, the typed sentence and the title, time, location and recurrence flag of nearby events are sent to Anthropic's
+       Claude using the user's own API key; event notes are never sent. Google user data is not sold, used for advertising, used to train AI models,
+       or shared with anyone else. ClaudeCal's use and transfer of information received from Google APIs adheres to the
+       <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.
+       Users can revoke access at any time from their Google Account or with "Disconnect" in the widget, and delete all local data by removing the folder above.</p>
+  </div>
+
+  <nav>
+    <a href="./">ClaudeCal 소개</a>
+    <a href="https://github.com/yamchaewoo/claudecal/issues">문의하기</a>
+  </nav>
+</main>
+</body>
+</html>
