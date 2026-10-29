@@ -617,7 +617,8 @@ function evRow(ev) {
   return `<div class="${cls}" data-id="${esc(ev.id)}">
     <button class="ck" data-done="${esc(ev.id)}" role="checkbox" aria-checked="${!!ev.done}" aria-label="완료"></button>
     <div class="bar"></div><div class="tm">${tm}</div>
-    <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div></div>`;
+    <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>
+    <button class="tk-x" data-evdel="${esc(ev.id)}" aria-label="삭제">✕</button></div>`;
 }
 
 const EXAMPLES = ["내일 3시 치과", "금요일 저녁 7시 강남에서 동기 모임", "매주 화목 1시 수업 12월까지", "이번주 일정 보여줘"];
@@ -725,6 +726,20 @@ async function openSheet(id) {
   }
 }
 function closeSheet() { $("#sheet").hidden = true; S.sheetEv = null; }
+async function deleteEvent(id) {   // 일정 줄의 ✕: 묻고 지운다 (반복이면 상세 창에서 '어디까지' 묻기)
+  const ev = S.events.find(e => e.id === id);
+  if (!ev || S.busy) return;
+  if (ev.recurring) { await openSheet(id); return deleteFromSheet(null); }
+  if (!(await askDelete([`${C.dlabel(ev.date)} ${ev.time || "종일"} ${ev.title}`]))) return;
+  S.busy = true;
+  setBusy("지우는 중");
+  try {
+    const rec = await gDelete(ev.id, "one");
+    S.undo.push({desc: "삭제: " + ev.title, batch: [rec]});
+    setStatus("삭제했어요: " + ev.title, "ok");
+    await refresh();
+  } catch (e) { handleErr(e); } finally { S.busy = false; }
+}
 async function deleteFromSheet(scope) {
   const ev = S.sheetEv;
   if (!ev || S.busy) return;
@@ -875,6 +890,8 @@ function bind() {
     if (tck) return taskAction(tck.dataset.tck, "check");
     if (tdel) return taskAction(tdel.dataset.tdel, "delete");
     if (trow) return openMemo(trow.dataset.tid);   // 줄을 누르면 수정 화면
+    const evDel = e.target.closest("[data-evdel]");
+    if (evDel) return deleteEvent(evDel.dataset.evdel);
     const ck = e.target.closest("[data-done]");
     if (ck) { toggleDone(ck.dataset.done); return; }
     const ex = e.target.closest("[data-ex]");
