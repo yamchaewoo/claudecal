@@ -659,15 +659,15 @@ function render() {
 // ---------------- 상태 줄 ----------------
 let busyTimer = null;
 let statusTimer = null;
-function setStatus(text, kind = "dim", canUndo = false) {
+function setStatus(text, kind = "dim") {
   clearInterval(busyTimer);
   clearTimeout(statusTimer);
   $("#status").className = "status " + kind;
   $("#status").hidden = !text;
   $("#stText").textContent = text || "";
-  $("#undoBtn").hidden = !canUndo;
   $("#send").classList.remove("busy");
-  if (text && kind !== "busy") statusTimer = setTimeout(() => setStatus(""), 10e3);   // 10초 뒤 [되돌리기]와 같이 사라진다
+  if (text && kind !== "busy")   // 안내는 2초, 오류·주의는 읽을 수 있게 6초 뒤 사라진다
+    statusTimer = setTimeout(() => setStatus(""), kind === "err" || kind === "warn" ? 6e3 : 2e3);
 }
 function setBusy(text) {
   const t0 = Date.now();
@@ -822,7 +822,6 @@ function bind() {
   });
   $("#send").onclick = () => submit();
   $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
-  $("#undoBtn").onclick = undo;
   $("#cfYes").onclick = () => answerConfirm(true);
   $("#cfNo").onclick = () => answerConfirm(false);
   $("#reload").onclick = () => { S.authError = null; tokenOk() ? refresh() : connected() ? (store.set("authTry", 0), authRedirect(true)) : render(); };
