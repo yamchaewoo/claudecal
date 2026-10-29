@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>ClaudeCal</title>
+<meta name="description" content="대충 적으면 구글 캘린더 일정이 되는 앱">
+<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1c21" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ClaudeCal">
+<style>
+:root {
+  --bg: #f7f6f3; --bg2: #ffffff; --bg3: #efede8; --line: #e2e0da; --fg: #1f2024; --fg2: #4a4c53; --dim: #75777f; --dim2: #a3a5ad;
+  --accent: #d97757; --accent-soft: #fbeee8; --rep: #3f9e8f; --allday: #c08a1e; --ok: #2f8f5b; --err: #c9483b; --warn: #b7791f;
+  --sun: #d0533f; --sat: #3c74c4; --shadow: 0 8px 30px rgba(0,0,0,.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1c21; --bg2: #24262c; --bg3: #2d2f36; --line: #34363e; --fg: #ecedf0; --fg2: #c3c5cc; --dim: #9a9ca5; --dim2: #6e7079;
+    --accent: #e08a6c; --accent-soft: #3a2a25; --rep: #5cc2b1; --allday: #e0b25a; --ok: #63c38d; --err: #f08174; --warn: #e5b45a;
+    --sun: #e88b8b; --sat: #8bb4e8; --shadow: 0 8px 30px rgba(0,0,0,.45);
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+  font: 15px/1.5 "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif; word-break: keep-all;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+
+header {
+  display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  border-bottom: 1px solid var(--line); background: var(--bg); flex: none;
+}
+.logo { color: var(--accent); font-weight: 700; font-size: 17px; }
+#acct { color: var(--dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.icon { width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; color: var(--fg2); font-size: 19px; display: grid; place-items: center; }
+.icon:active { background: var(--bg3); }
+#reload.spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+main { flex: 1; overflow-y: auto; padding: 4px 12px 16px; overscroll-behavior: contain; }
+
+/* 처음 설정 */
+.card { background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 12px 4px; }
+.card h2 { font-size: 17px; margin: 0 0 4px; }
+.card p { margin: 0 0 12px; color: var(--fg2); font-size: 14px; }
+.step { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.step .n { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--bg3); color: var(--fg2); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.step.ok .n { background: var(--ok); color: #fff; }
+.step.ok .n::after { content: "✓"; }
+.step.ok .n span { display: none; }
+.step .b { flex: 1; min-width: 0; }
+.step b { display: block; margin-bottom: 4px; }
+.step .done { color: var(--ok); font-size: 13px; overflow-wrap: anywhere; }
+.row { display: flex; gap: 8px; }
+.in { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px 12px; outline: none; min-width: 0; }
+.in:focus { border-color: var(--accent); }
+.btn { border: 1px solid var(--line); background: var(--bg3); border-radius: 10px; padding: 10px 14px; font-weight: 600; white-space: nowrap; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--err); }
+.btn.danger.armed { background: var(--err); border-color: var(--err); color: #fff; }
+.btn.wide { width: 100%; }
+.msg { font-size: 13px; color: var(--dim); margin-top: 6px; min-height: 1em; }
+.hint { font-size: 13px; color: var(--dim); }
+.hint a, .link { color: var(--accent); }
+.link { border: 0; background: none; padding: 0; font-weight: 600; }
+.banner { display: flex; align-items: center; gap: 10px; margin: 10px 4px 0; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); font-size: 14px; }
+.banner span { flex: 1; }
+
+/* 목록 */
+.dayh { position: sticky; top: -4px; z-index: 1; background: var(--bg); padding: 14px 6px 6px; font-weight: 700; font-size: 14px; color: var(--fg2); }
+.dayh.today { color: var(--accent); }
+.dayh.sun { color: var(--sun); } .dayh.sat { color: var(--sat); } .dayh.today { color: var(--accent); }
+.dayh .rel { font-weight: 600; font-size: 12px; margin-left: 4px; color: var(--accent); }
+.noev { padding: 2px 8px 6px 46px; color: var(--dim2); font-size: 13px; }
+.ev { display: flex; align-items: stretch; gap: 10px; padding: 9px 8px; border-radius: 12px; cursor: pointer; }
+.ev:active { background: var(--bg3); }
+.ev .bar { width: 3px; border-radius: 3px; background: var(--accent); flex: none; }
+.ev.rep .bar { background: var(--rep); } .ev.allday .bar { background: var(--allday); }
+.ev .tm { width: 46px; flex: none; color: var(--fg2); font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.ev .tm small { display: block; color: var(--dim2); font-size: 12px; }
+.ev.allday .tm { color: var(--allday); }
+.ev .bd { flex: 1; min-width: 0; }
+.ev .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.ev .mt { color: var(--dim); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev.past { opacity: .5; }
+/* 완료 체크칸: 누르면 취소선 + 흐리게 */
+.ck { flex: none; align-self: center; width: 24px; height: 24px; padding: 0; border: 2px solid var(--dim2); border-radius: 7px; background: transparent;
+      display: grid; place-items: center; color: transparent; font-size: 14px; font-weight: 800; line-height: 1; margin: -6px -2px -6px 0; box-sizing: content-box; background-clip: content-box; }
+.ck::after { content: "✓"; }
+.done .ck { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ev.done .tt { text-decoration: line-through; }
+.ev.done .bar, .ev.done .tm, .ev.done .bd { opacity: .4; }
+.qhead { display: flex; align-items: center; gap: 12px; padding: 12px 6px 0; }
+.empty { padding: 28px 8px; color: var(--dim); text-align: center; }
+.empty p { margin: 0 0 14px; }
+.ex { display: block; width: 100%; margin: 8px 0; padding: 11px 14px; border: 1px dashed var(--line); border-radius: 12px; background: transparent; color: var(--fg2); text-align: left; }
+
+/* 아래쪽 입력 */
+.dock { flex: none; border-top: 1px solid var(--line); background: var(--bg); padding: 8px 10px calc(env(safe-area-inset-bottom) + 8px); }
+.status { display: flex; align-items: center; gap: 10px; padding: 2px 6px 8px; font-size: 13.5px; color: var(--dim); }
+.status span { flex: 1; overflow-wrap: anywhere; }
+.status.ok { color: var(--ok); } .status.err { color: var(--err); } .status.warn { color: var(--warn); } .status.busy { color: var(--accent); }
+.confirm { background: var(--bg2); border: 1px solid var(--accent); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; }
+.confirm p { margin: 0 0 6px; font-weight: 600; }
+.confirm ul { margin: 0 0 10px; padding-left: 18px; font-size: 14px; color: var(--fg2); }
+.confirm .row { justify-content: flex-end; }
+.bar-in { display: flex; align-items: flex-end; gap: 6px; }
+#q { flex: 1; resize: none; border: 1px solid var(--line); border-radius: 22px; background: var(--bg2); padding: 10px 16px; max-height: 120px; outline: none; line-height: 1.4; min-height: 44px; }
+#q:focus { border-color: var(--accent); }
+#q::placeholder { color: var(--dim2); }
+.round { width: 44px; height: 44px; border-radius: 50%; border: 0; flex: none; display: grid; place-items: center; font-size: 19px; }
+#paste { background: var(--bg3); color: var(--fg2); }
+#send { background: var(--accent); color: #fff; font-size: 18px; }
+#send.busy { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+
+/* 아래에서 올라오는 창 */
+.sheet { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; z-index: 10; }
+.sheet .pane { width: 100%; max-height: 88dvh; overflow-y: auto; background: var(--bg2); border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
+               padding: 18px 18px calc(env(safe-area-inset-bottom) + 18px); }
+.pane-h { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+.pane-h h3 { flex: 1; margin: 0; font-size: 19px; overflow-wrap: anywhere; }
+.pane .sub { color: var(--fg2); margin: 2px 0; overflow-wrap: anywhere; }
+.pane .note { white-space: pre-wrap; color: var(--fg2); background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 14px; }
+.pane .note:empty { display: none; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.btns .btn { flex: 1; }
+.scope { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--bg); }
+.scope p { margin: 0 0 8px; font-size: 14px; }
+.sec { padding: 14px 0; border-top: 1px solid var(--line); }
+.sec:first-of-type { border-top: 0; }
+.sec h4 { margin: 0 0 8px; font-size: 14px; color: var(--fg2); }
+.models { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.models button { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 8px 4px; text-align: center; color: var(--fg2); font-size: 13px; }
+.models button b { display: block; font-size: 14px; color: var(--fg); }
+.models button.on { border-color: var(--accent); background: var(--accent-soft); }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">✱ 일정</span>
+  <span id="acct"></span>
+  <button class="icon" id="reload" title="새로고침" aria-label="새로고침">↻</button>
+  <button class="icon" id="gear" title="설정" aria-label="설정">⚙</button>
+</header>
+
+<main>
+  <div class="banner" id="relogin" role="button" hidden><span>구글 로그인이 풀렸어요.</span><b class="link">다시 연결</b></div>
+
+  <div class="card" id="setup" hidden>
+    <h2>ClaudeCal 시작하기</h2>
+    <p>대충 적으면 Claude가 읽어서 구글 캘린더에 넣어 줘요. 처음 한 번만 두 가지를 해 주세요.</p>
+    <div class="step" id="stepG">
+      <div class="n"><span>1</span></div>
+      <div class="b"><b>구글 캘린더 연결</b>
+        <button class="btn primary wide" id="gBtn">구글로 로그인</button>
+        <div class="done" id="gDone"></div>
+        <div class="hint" style="margin-top:6px">"확인되지 않은 앱" 화면이 나오면 <b>고급 → ClaudeCal(으)로 이동</b>을 누르고, 캘린더 권한에 체크해 주세요.</div>
+      </div>
+    </div>
+    <div class="step" id="stepK">
+      <div class="n"><span>2</span></div>
+      <div class="b"><b>Claude API 키</b>
+        <div id="kForm">
+          <div class="row"><input class="in" id="kInput" type="password" autocomplete="off" placeholder="sk-ant-로 시작하는 키"><button class="btn" id="kSave">저장</button></div>
+          <div class="msg" id="kMsg"></div>
+          <div class="hint"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> → API Keys에서 만들 수 있어요. 키는 이 휴대폰에만 저장돼요.</div>
+        </div>
+        <div class="done" id="kDone"></div>
+      </div>
+    </div>
+    <div class="step" id="installHint" hidden>
+      <div class="n"><span>+</span></div>
+      <div class="b"><b>홈 화면에 추가</b>
+        <button class="btn wide" id="installBtn">홈 화면에 추가하기</button>
+        <div class="hint" style="margin-top:6px">추가하면 앱처럼 열리고, 안드로이드에선 카톡 메시지 <b>공유 → ClaudeCal</b>로 바로 등록돼요. 아이폰은 Safari <b>공유 → 홈 화면에 추가</b>.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</main>
+
+<div class="dock">
+  <div class="confirm" id="confirm" hidden>
+    <p id="cfText"></p>
+    <ul id="cfList"></ul>
+    <div class="row"><button class="btn" id="cfNo">취소</button><button class="btn primary" id="cfYes">그렇게 해 줘</button></div>
+  </div>
+  <div class="status" id="status" hidden><span id="stText"></span><button class="link" id="undoBtn" hidden>되돌리기</button></div>
+  <div class="bar-in">
+    <button class="round" id="paste" title="복사한 글 붙여넣고 등록" aria-label="복사한 글 붙여넣고 등록">📋</button>
+    <textarea id="q" rows="1" enterkeyhint="send" placeholder="모레 7시 강남 동기 모임" aria-label="일정 입력"></textarea>
+    <button class="round" id="send" title="보내기" aria-label="보내기">➤</button>
+  </div>
+</div>
+
+<!-- 일정 상세 -->
+<div class="sheet" id="sheet" hidden>
+  <div class="pane">
+    <div class="pane-h"><h3 id="shTitle"></h3><button class="icon" data-close="sheet" aria-label="닫기">✕</button></div>
+    <div class="sub" id="shWhen"></div>
+    <div class="sub" id="shRule"></div>
+    <div class="sub" id="shLoc"></div>
+    <div class="note" id="shNote"></div>
+    <div class="btns">
+      <button class="btn primary" id="shDone">완료</button>
+      <button class="btn danger" id="shDel">삭제</button>
+    </div>
+    <div class="scope" id="shScope" hidden>
+      <p>반복 일정이에요. 어디까지 지울까요?</p>
+      <div class="row"><button class="btn" data-s="one">이 일정만</button><button class="btn danger" data-s="all">반복 전체</button><button class="btn" data-s="">취소</button></div>
+    </div>
+    <div class="btns"><a class="btn wide" id="shOpen" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">구글 캘린더에서 열기 · 고치기</a></div>
+  </div>
+</div>
+
+<!-- 설정 -->
+<div class="sheet" id="settings" hidden>
+  <div class="pane">
+    <div class="pane-h"><h3>설정</h3><button class="icon" data-close="settings" aria-label="닫기">✕</button></div>
+    <div class="sec">
+      <h4>구글 캘린더</h4>
+      <div class="sub" id="sAcct" style="margin-bottom:10px"></div>
+      <div class="row"><button class="btn" id="sConnect">구글 캘린더 연결</button><button class="btn danger" id="sDisconnect">연결 끊기</button></div>
+    </div>
+    <div class="sec">
+      <h4>Claude API 키</h4>
+      <div class="row"><input class="in" id="sKey" type="password" autocomplete="off"><button class="btn" id="sSave">저장</button></div>
+      <div class="msg" id="sMsg"></div>
+    </div>
+    <div class="sec">
+      <h4>모델</h4>
+      <div class="models" id="sModels">
+        <button data-m="haiku"><b>Haiku</b>가장 빠름</button>
+        <button data-m="sonnet"><b>Sonnet</b>기본</button>
+        <button data-m="opus"><b>Opus</b>가장 똑똑함</button>
+      </div>
+    </div>
+    <div class="sec">
+      <button class="btn wide" id="sInstall" hidden>홈 화면에 추가하기</button>
+      <p class="hint">PC 위젯과 같은 구글 캘린더를 써서, 여기서 넣은 일정은 PC에도 바로 보여요.
+        <a href="../privacy.html" target="_blank" rel="noopener">개인정보처리방침</a></p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

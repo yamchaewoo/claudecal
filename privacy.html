@@ -12,14 +12,17 @@
     <div class="logo">✱</div>
     <h1>개인정보처리방침</h1>
   </header>
-  <p class="lead">ClaudeCal · 시행일 2026년 10월 28일</p>
+  <p class="lead">ClaudeCal · 시행일 2026년 10월 29일</p>
 
-  <div class="note">한 줄 요약: ClaudeCal은 내 PC에서만 돌아가요. 구글 캘린더 일정은 위젯을 쓰는 데에만 쓰고, 개발자에게 보내거나 팔지 않아요.
+  <div class="note">한 줄 요약: ClaudeCal은 내 PC와 내 휴대폰에서만 돌아가요. 구글 캘린더 일정은 일정 관리에만 쓰고, 개발자에게 보내거나 팔지 않아요.
     문장 해석을 위해 내가 넣은 <b>본인의</b> Claude API 키로 Anthropic에 필요한 만큼만 보내요.</div>
 
   <h2>1. ClaudeCal은 어떻게 동작하나요</h2>
   <p>ClaudeCal은 각자 Windows PC에 설치해서 쓰는 위젯이에요. 개발자가 운영하는 서버나 계정 시스템이 없어서,
      사용자의 정보가 개발자에게 전달되지 않아요.</p>
+  <p><a href="app/">휴대폰 앱</a>도 같은 방식이에요. 이 사이트에서 받은 화면이 휴대폰 브라우저 안에서 돌아가면서 구글과 Anthropic에 <b>직접</b> 연결해요.
+     이 사이트(GitHub Pages)는 화면 파일만 내려 줄 뿐, 입력한 글이나 일정을 받지 않아요.
+     안드로이드에서 다른 앱의 글을 <b>공유 → ClaudeCal</b>로 보내면, 그 글은 직접 입력한 문장과 똑같이 처리돼요.</p>
 
   <h2>2. 접근하는 구글 사용자 데이터</h2>
   <p>사용자가 위젯 설정에서 <b>구글 캘린더 연결</b>을 누르고 구글 화면에서 허락했을 때만 접근해요.</p>
@@ -33,6 +36,7 @@
   <ul>
     <li>위젯 화면(목록·주·월)에 일정 보여 주기</li>
     <li>사용자가 입력하거나 고친 대로 일정 등록·수정·삭제하기, 되돌리기</li>
+    <li>완료 체크: 그 일정의 숨은 칸(앱 전용 속성)에 '완료' 표시만 남겨서, PC와 휴대폰에서 똑같이 보이게 하기</li>
     <li>일정 시작 전 Windows 알림 보내기</li>
     <li>사용자가 원할 때 이 PC에 저장해 둔 일정을 구글 캘린더로 옮기기</li>
   </ul>
@@ -47,6 +51,12 @@
   </ul>
   <p>구글 캘린더 일정 자체는 구글 캘린더에 저장돼요. 위젯은 화면과 알림을 위해 켜져 있는 동안만 메모리에 들고 있어요.
      최근 입력과 되돌리기 기록도 메모리에만 있고, 위젯을 끄면 사라져요.</p>
+  <p>휴대폰 앱은 그 휴대폰 브라우저의 저장소(이 사이트 전용)에만 저장해요.</p>
+  <ul>
+    <li>구글 접근 토큰(1시간 동안만 쓸 수 있는 열쇠)과 연결된 계정 이메일</li>
+    <li>사용자가 넣은 Claude API 키, 고른 모델</li>
+    <li>보내기 전의 입력 중인 글, 공유받아 잠깐 맡아 둔 글</li>
+  </ul>
 
   <h2>5. 다른 곳으로 보내는 정보</h2>
   <p>"모레 저녁 7시 동기 모임" 같은 문장을 해석하기 위해, 사용자가 직접 넣은 <b>본인의</b> Anthropic API 키(또는 본인의 Claude Code 로그인)로
@@ -55,7 +65,7 @@
     <li>사용자가 입력한 문장</li>
     <li>가까운 날짜 일정의 제목, 날짜·시간, 장소, 반복 여부 ("시험 미뤄줘"처럼 기존 일정을 고칠 때 어떤 일정인지 찾기 위해서예요. 메모는 보내지 않아요.)</li>
   </ul>
-  <p>날짜·시간·제목만 있는 단순한 입력은 Claude에 보내지 않고 PC에서 바로 처리해요.
+  <p>PC 위젯은 날짜·시간·제목만 있는 단순한 입력을 Claude에 보내지 않고 PC에서 바로 처리해요. 휴대폰 앱은 휴대폰에서 바로 Anthropic으로 보내요.
      Anthropic이 받은 정보를 다루는 방식은 <a href="https://www.anthropic.com/legal/privacy">Anthropic 개인정보처리방침</a>을 따라요.
      이 밖에는 어떤 제3자에게도 구글 사용자 데이터를 보내거나 팔지 않아요.</p>
 
@@ -70,6 +80,7 @@
     <li>위젯 <b>⋯ → 설정 → 구글 캘린더 → 연결 해제</b>를 누르면 PC에 저장된 구글 로그인 토큰이 지워져요.</li>
     <li><a href="https://myaccount.google.com/connections">구글 계정 → 서드 파티 연결</a>에서 ClaudeCal의 접근 권한을 언제든 없앨 수 있어요.</li>
     <li><code>%APPDATA%\ClaudeCal</code> 폴더를 지우면 PC에 남은 모든 정보가 지워져요.</li>
+    <li>휴대폰 앱은 <b>⚙ 설정 → 연결 끊기</b>로 구글 토큰과 이메일이 지워지고, 브라우저 설정에서 이 사이트의 데이터를 지우면 API 키까지 모두 지워져요.</li>
   </ul>
 
   <h2>8. 어린이</h2>
@@ -83,7 +94,10 @@
 
   <h2>English summary</h2>
   <div class="card muted">
-    <p>ClaudeCal is a desktop widget that runs only on the user's own Windows PC; the developer operates no server and receives no user data.
+    <p>ClaudeCal is a desktop widget that runs only on the user's own Windows PC, plus a mobile web app that runs entirely in the user's phone browser
+       and talks directly to Google and Anthropic (this site only serves the static app files); the developer operates no server and receives no user data.
+       The mobile app keeps the short-lived Google access token, the account email, the user's API key and unsent input only in that browser's site storage.
+       A "done" mark is stored as an app-private extended property on the event.
        With the user's consent it uses the Google Calendar scope <code>calendar.events</code> solely to display, create, edit and delete the user's
        events and to show reminders. The OAuth token, the connected account's email address and settings are stored locally in <code>%APPDATA%\ClaudeCal</code>.
        To interpret free-text input, the typed sentence and the title, time, location and recurrence flag of nearby events are sent to Anthropic's
