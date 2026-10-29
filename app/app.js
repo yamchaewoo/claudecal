@@ -204,7 +204,7 @@ const taskPath = id => `tasks/${encodeURIComponent(id)}`;
 function taskFromGoogle(t) {
   const title = t.title || "", doing = title.startsWith(DOING);
   return {id: t.id, title: doing ? title.slice(DOING.length) : title, state: t.status === "completed" ? "done" : doing ? "doing" : "todo",
-          done_at: t.completed || "", pos: t.position || ""};
+          notes: t.notes || "", done_at: t.completed || "", pos: t.position || ""};
 }
 async function listTasks() {
   const items = [];
@@ -231,6 +231,11 @@ async function tSet(id, state) {
   const back = {title: old.title || "", status: old.status || "needsAction"};
   if (back.status !== "completed") back.completed = null;
   return [{t: "task_patch", id, body: back}];
+}
+async function tNote(id, notes) {
+  const old = await google("GET", taskPath(id), {api: "tasks"});
+  await google("PATCH", taskPath(id), {api: "tasks", body: {notes: notes || null}});
+  return [{t: "task_patch", id, body: {notes: old.notes ?? null}}];
 }
 async function tDelete(id) {
   const old = await google("GET", taskPath(id), {api: "tasks"});
@@ -505,10 +510,37 @@ async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | r
   await refreshTasks();
 }
 function taskRow(t) {
+  const first = (t.notes || "").split("\n")[0];
   return `<div class="tk ${t.state}" data-tid="${esc(t.id)}">
     <button class="ck" data-tck="${esc(t.id)}" role="checkbox" aria-checked="${t.state === "done"}" aria-label="완료"></button>
-    <div class="tk-t">${esc(t.title)}${t.state === "doing" ? `<span class="tk-badge">진행 중</span>` : ""}</div>
+    <div class="tk-b"><div class="tk-t">${esc(t.title)}${t.state === "doing" ? `<span class="tk-badge">진행 중</span>` : ""}</div>
+      ${first ? `<div class="tk-n">${esc(first)}</div>` : ""}</div>
+    <button class="tk-m${t.notes ? " has" : ""}" data-tmemo="${esc(t.id)}" aria-label="메모">📝</button>
     <button class="tk-x" data-tdel="${esc(t.id)}" aria-label="지우기">✕</button></div>`;
+}
+function openMemo(id) {
+  const t = S.tasks.find(x => x.id === id);
+  if (!t) return;
+  S.memoTask = t;
+  $("#mmTitle").textContent = t.title;
+  $("#mmText").value = t.notes || "";
+  $("#memo").hidden = false;
+  $("#mmText").focus();
+}
+async function saveMemo() {   // 닫으면 늘 저장 (메모장처럼). 바뀐 게 없으면 그냥 닫는다
+  const t = S.memoTask, notes = $("#mmText").value.trim();
+  $("#memo").hidden = true;
+  S.memoTask = null;
+  if (!t || notes === (t.notes || "").trim() || S.busy) return;
+  t.notes = notes;
+  render();
+  S.busy = true;
+  try {
+    const rec = await tNote(t.id, notes);
+    S.undo.push({desc: "메모: " + t.title, batch: [rec]});
+    setStatus((notes ? "메모 저장: " : "메모 지움: ") + t.title, "ok", true);
+  } catch (e) { handleErr(e); } finally { S.busy = false; }
+  await refreshTasks();
 }
 function renderTasks() {
   if (!tokenOk()) return "";
@@ -626,13 +658,16 @@ function render() {
 
 // ---------------- 상태 줄 ----------------
 let busyTimer = null;
+let statusTimer = null;
 function setStatus(text, kind = "dim", canUndo = false) {
   clearInterval(busyTimer);
+  clearTimeout(statusTimer);
   $("#status").className = "status " + kind;
   $("#status").hidden = !text;
   $("#stText").textContent = text || "";
   $("#undoBtn").hidden = !canUndo;
   $("#send").classList.remove("busy");
+  if (text && kind !== "busy") statusTimer = setTimeout(() => setStatus(""), 10e3);   // 10초 뒤 [되돌리기]와 같이 사라진다
 }
 function setBusy(text) {
   const t0 = Date.now();
@@ -812,6 +847,8 @@ function bind() {
   $("#installBtn").onclick = install;
   document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { $("#" + b.dataset.close).hidden = true; S.sheetEv = null; });
   for (const id of ["sheet", "settings"]) $("#" + id).addEventListener("click", e => { if (e.target.id === id) { $("#" + id).hidden = true; S.sheetEv = null; } });
+  $("#memo").addEventListener("click", e => { if (e.target.id === "memo") saveMemo(); });   // 바깥을 눌러 닫아도 저장
+  $("#mmDone").onclick = saveMemo;
   $("#shDone").onclick = () => S.sheetEv && toggleDone(S.sheetEv.id);
   $("#shDel").onclick = () => deleteFromSheet(null);
   $("#shScope").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (b) b.dataset.s ? deleteFromSheet(b.dataset.s) : ($("#shScope").hidden = true); });
@@ -819,6 +856,8 @@ function bind() {
     if (e.target.id === "tkScope") return authRedirect(false);
     if (e.target.id === "tkClear") return taskAction(null, "clear");
     const tck = e.target.closest("[data-tck]"), tdel = e.target.closest("[data-tdel]"), trow = e.target.closest("[data-tid]");
+    const tmemo = e.target.closest("[data-tmemo]");
+    if (tmemo) return openMemo(tmemo.dataset.tmemo);
     if (tck) return taskAction(tck.dataset.tck, "check");
     if (tdel) return taskAction(tdel.dataset.tdel, "delete");
     if (trow) return taskAction(trow.dataset.tid, "row");
