@@ -34,8 +34,37 @@ const merge = (a, b) => {
 const startOf = ev => new Date(ev.start.dateTime || `${ev.start.date}T00:00:00`);
 const endOf = ev => new Date(ev.end.dateTime || `${ev.end.date}T00:00:00`);
 
-export async function fakeGoogle(method, path, {query, body} = {}) {
+// 가짜 구글 할 일 (기본 목록): position이 작을수록 위, 새로 넣으면 맨 위
+const tasks = new Map();
+let tpos = 1000;
+for (const [title, status] of [["보고서 초안 쓰기", "needsAction"], ["▶ 자취방 계약서 확인", "needsAction"], ["책 반납하기", "completed"]])
+  tasks.set(`t${tpos}`, {id: `t${tpos}`, title, status, position: String(tpos--).padStart(20, "0"),
+                         ...(status === "completed" ? {completed: new Date().toISOString()} : {})});
+
+function fakeTasks(method, path, body) {
+  const id = decodeURIComponent(path.split("/")[1] || "");
+  if (method === "GET" && path === "tasks") return {items: JSON.parse(JSON.stringify([...tasks.values()]))};
+  if (method === "POST") {
+    const t = {id: `t${tpos}`, status: "needsAction", position: String(tpos--).padStart(20, "0"), ...JSON.parse(JSON.stringify(body))};
+    if (t.status === "completed") t.completed = new Date().toISOString();
+    tasks.set(t.id, t);
+    return t;
+  }
+  const t = tasks.get(id);
+  if (!t) throw Object.assign(new Error("할 일을 찾지 못했어요."), {status: 404});
+  if (method === "GET") return JSON.parse(JSON.stringify(t));
+  if (method === "PATCH") {
+    Object.assign(t, JSON.parse(JSON.stringify(body)));
+    if (t.status === "completed" && !t.completed) t.completed = new Date().toISOString();
+    if (t.completed === null) delete t.completed;
+    return t;
+  }
+  if (method === "DELETE") { tasks.delete(id); return null; }
+}
+
+export async function fakeGoogle(method, path, {query, body, api} = {}) {
   await wait(250);
+  if (api === "tasks") return fakeTasks(method, path, body);
   const id = decodeURIComponent(path.split("/")[1] || "");
   if (method === "GET" && path === "events") {
     const f = new Date(query.timeMin), t = new Date(query.timeMax);

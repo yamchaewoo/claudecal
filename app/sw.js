@@ -1,6 +1,6 @@
 // 앱 화면 파일만 저장해 두는 서비스 워커 — 인터넷이 잠깐 끊겨도 화면은 열리게.
 // 항상 새 파일을 먼저 받고(network-first), 안 되면 저장해 둔 걸 쓴다. 구글·Claude 요청은 건드리지 않는다.
-const CACHE = "claudecal-v1";
+const CACHE = "claudecal-v2";
 const SHELL = ["./", "app.js", "cal.js", "prompt.js", "manifest.webmanifest", "icon-192.png"];
 
 self.addEventListener("install", e => {
@@ -17,7 +17,7 @@ self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(url.href, {cache: "no-cache"})   // 브라우저 저장본도 서버에 확인 → 새 버전이 올라가면 바로 반영
       .then(res => {
         if (res.ok) {
           const copy = res.clone();

@@ -2,11 +2,16 @@
 //  · 구글: OAuth 암묵적 흐름(리디렉션)으로 1시간짜리 토큰. 만료되면 조용히 다시 받아 온다(prompt=none).
 //  · Claude: 사용자가 넣은 본인 API 키로 브라우저에서 바로 호출 (키는 이 휴대폰 localStorage에만).
 //  · 안드로이드: 홈 화면에 추가하면 공유 목록에 뜬다 (카톡 메시지 공유 → 바로 등록).
+//  · 위쪽 [일정 | 할 일]: '할 일'은 날짜 없는 일 — 구글 할 일(Tasks) 기본 목록. 체크 = 완료, 줄 누르기 = 진행 중('▶ ' 제목 앞).
 import { SYSTEM_PROMPT, SCHEMA, MODELS } from "./prompt.js";
 import * as C from "./cal.js";
 
 const GOOGLE_CLIENT_ID = "560537057198-3jls07opathhum0n6neh21gt171v0dv7.apps.googleusercontent.com";   // 구글 클라우드 '웹 애플리케이션' 클라이언트 ID (공개돼도 되는 값)
-const SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const SCOPE_CAL = "https://www.googleapis.com/auth/calendar.events";
+const SCOPE_TASKS = "https://www.googleapis.com/auth/tasks";
+const BASES = {cal: "https://www.googleapis.com/calendar/v3/calendars/primary/", tasks: "https://tasks.googleapis.com/tasks/v1/lists/@default/"};
+const DOING = "▶ ";
+const TASKS_SCOPE_MSG = "할 일을 쓰려면 구글 권한을 하나 더 받아야 해요.";
 const REDIRECT = new URL("./", location.href).href;   // 구글 클라이언트에 등록한 리디렉션 주소와 같아야 함
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.134.0/+esm";
 const NET_MSG = "인터넷에 연결하지 못했어요. 연결을 확인해 주세요.";
@@ -22,10 +27,13 @@ const store = {   // 이 휴대폰에만 남는 값 (사생활 보호 모드 등
 const S = {
   key: store.get("key", ""), model: store.get("model", "sonnet"), tok: store.get("tok"), email: store.get("email", ""),
   events: [], query: null, undo: [], busy: false, pending: null, authError: null, installEvt: null, loadedAt: 0, hist: [], hIdx: -1,
+  tab: store.get("tab", "cal"), scopes: store.get("scopes", ""), tasks: [], tasksErr: null, tasksNeedScope: false,
 };
 class NeedAuth extends Error {}
+class NeedTasksScope extends Error {}
 const tokenOk = () => !!DEMO || (S.tok && S.tok.exp > Date.now() + 60e3);
 const connected = () => !!DEMO || tokenOk() || !!S.email;   // 한 번이라도 연결했으면 (토큰은 만료됐을 수 있음)
+const hasTasksScope = () => !!DEMO || S.scopes.includes("auth/tasks");
 function setTok(t) { S.tok = t; store.set("tok", t); }
 
 // ---------------- 구글 로그인 (리디렉션) ----------------
@@ -40,7 +48,9 @@ function authRedirect(silent) {   // 구글로 넘어가면 true
   const state = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, "0")).join("");
   store.set("state", state);
   store.set("authTry", Date.now());
-  const p = new URLSearchParams({client_id: GOOGLE_CLIENT_ID, redirect_uri: REDIRECT, response_type: "token", scope: SCOPE,
+  // 조용히 다시 받을 땐 이미 받은 권한만 (새 권한을 달면 동의 화면이 필요해서 실패한다)
+  const scope = silent ? (S.scopes || SCOPE_CAL) : `${SCOPE_CAL} ${SCOPE_TASKS}`;
+  const p = new URLSearchParams({client_id: GOOGLE_CLIENT_ID, redirect_uri: REDIRECT, response_type: "token", scope,
                                  include_granted_scopes: "true", state, prompt: silent ? "none" : "select_account"});
   if (S.email) p.set("login_hint", S.email);
   location.assign("https://accounts.google.com/o/oauth2/v2/auth?" + p);
@@ -56,21 +66,26 @@ function takeAuthResult() {   // 구글에서 돌아오면 주소 # 뒤에 토�
   if (h.get("error")) { S.authError = h.get("error"); return; }
   if (!(h.get("scope") || "").includes("calendar.events")) { S.authError = "scope"; return; }
   setTok({token: h.get("access_token"), exp: Date.now() + Number(h.get("expires_in") || 3600) * 1000});
+  S.scopes = h.get("scope");
+  store.set("scopes", S.scopes);
   S.authError = null;
 }
 
 function disconnect() {
   setTok(null);
   S.email = ""; store.set("email", null);
+  S.scopes = ""; store.set("scopes", null);
+  S.tasks = [];
   S.events = []; S.undo = [];
   render();
   setStatus("이 휴대폰에서 구글 연결을 끊었어요.", "ok");
 }
 
 // ---------------- 구글 캘린더 ----------------
-async function realGoogle(method, path, {query, body} = {}) {
+async function realGoogle(method, path, {query, body, api = "cal"} = {}) {   // api: cal(캘린더) | tasks(할 일)
   if (!tokenOk()) throw new NeedAuth("구글 로그인이 필요해요.");
-  const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/" + path);
+  if (api === "tasks" && !hasTasksScope()) throw new NeedTasksScope(TASKS_SCOPE_MSG);
+  const url = new URL(BASES[api] + path);
   for (const [k, v] of Object.entries(query || {})) if (v !== null && v !== undefined) url.searchParams.set(k, v);
   let r;
   try {
@@ -82,6 +97,8 @@ async function realGoogle(method, path, {query, body} = {}) {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     const msg = data.error?.message || "";
+    if (api === "tasks" && r.status === 403 && /insufficient|scope/i.test(msg)) throw new NeedTasksScope(TASKS_SCOPE_MSG);
+    if (r.status === 403 && /has not been used|disabled/i.test(msg)) throw new Error("구글 클라우드에서 이 기능(API)이 꺼져 있어요. 배포한 사람이 켜야 해요.");
     const err = new Error(r.status === 403 && /insufficient|scope/i.test(msg) ? "캘린더 권한이 없어요. 구글을 다시 연결하고 캘린더 권한에 체크해 주세요."
       : r.status === 404 || r.status === 410 ? "일정을 찾지 못했어요 (이미 지워졌을 수 있어요)." : `구글 오류(${r.status}) ${msg}`.slice(0, 200));
     err.status = r.status;
@@ -172,8 +189,53 @@ async function gUndo(records) {
         if (e instanceof NeedAuth) throw e;
         await google("POST", "events", {body: C.clean(r.body)});
       }
+    } else if (r.t === "task_delete") {
+      try { await google("DELETE", `tasks/${encodeURIComponent(r.id)}`, {api: "tasks"}); } catch (e) { if (![404, 410].includes(e.status)) throw e; }
+    } else if (r.t === "task_patch") {
+      await google("PATCH", `tasks/${encodeURIComponent(r.id)}`, {api: "tasks", body: r.body});
+    } else if (r.t === "task_insert") {
+      await google("POST", "tasks", {api: "tasks", body: C.clean(r.body)});
     }
   }
+}
+
+// ---------------- 기약 없는 할 일 (구글 할 일 기본 목록) — 위젯의 GoogleStore와 같은 규칙 ----------------
+const taskPath = id => `tasks/${encodeURIComponent(id)}`;
+function taskFromGoogle(t) {
+  const title = t.title || "", doing = title.startsWith(DOING);
+  return {id: t.id, title: doing ? title.slice(DOING.length) : title, state: t.status === "completed" ? "done" : doing ? "doing" : "todo",
+          done_at: t.completed || "", pos: t.position || ""};
+}
+async function listTasks() {
+  const items = [];
+  let pageToken = null;
+  do {
+    const res = await google("GET", "tasks", {api: "tasks", query: {showCompleted: "true", showHidden: "false", maxResults: 100, pageToken}});
+    items.push(...(res.items || []));
+    pageToken = res.nextPageToken;
+  } while (pageToken && items.length <= 1000);
+  const all = items.filter(t => !t.deleted && (t.title || "").trim()).map(taskFromGoogle);
+  const active = all.filter(t => t.state !== "done").sort((a, b) => (a.state !== "doing") - (b.state !== "doing") || (a.pos < b.pos ? -1 : 1));
+  const done = all.filter(t => t.state === "done").sort((a, b) => (a.done_at < b.done_at ? 1 : -1)).slice(0, 50);
+  return [...active, ...done];
+}
+async function tAdd(title) {
+  const t = await google("POST", "tasks", {api: "tasks", body: {title}});   // 맨 위에 들어간다
+  return [{t: "task_delete", id: t.id}];
+}
+async function tSet(id, state) {
+  const old = await google("GET", taskPath(id), {api: "tasks"});
+  const body = {title: (state === "doing" ? DOING : "") + taskFromGoogle(old).title, status: state === "done" ? "completed" : "needsAction"};
+  if (state !== "done") body.completed = null;
+  await google("PATCH", taskPath(id), {api: "tasks", body});
+  const back = {title: old.title || "", status: old.status || "needsAction"};
+  if (back.status !== "completed") back.completed = null;
+  return [{t: "task_patch", id, body: back}];
+}
+async function tDelete(id) {
+  const old = await google("GET", taskPath(id), {api: "tasks"});
+  await google("DELETE", taskPath(id), {api: "tasks"});
+  return [{t: "task_insert", body: {title: old.title, notes: old.notes ?? null, status: old.status, due: old.due ?? null}}];
 }
 
 // ---------------- Claude ----------------
@@ -272,6 +334,7 @@ async function executePlan(plan) {   // 실패하면 그때까지 한 것을 되
 async function submit(text) {
   text = (text ?? $("#q").value).trim();
   if (!text || S.busy) return;
+  if (S.tab === "tasks") return addTask(text);   // 할 일은 Claude 없이 그대로 적는다
   if (!S.key) { setStatus("먼저 Claude API 키를 넣어 주세요.", "warn"); render(); return; }
   if (!tokenOk()) {   // 토큰이 만료됐으면 글을 맡겨 두고 구글에 다녀온다
     if (!connected()) { setStatus("먼저 구글 캘린더를 연결해 주세요.", "warn"); render(); return; }
@@ -343,6 +406,7 @@ function handleErr(e, text) {
     store.set("authTry", 0);
     return authRedirect(true);
   }
+  if (e instanceof NeedTasksScope) Object.assign(S, {tasksNeedScope: true, tasksErr: e.message});
   if (text && !$("#q").value) setInput(text);   // 못 넣은 글은 입력 칸에 돌려놓는다
   setStatus(e.message || String(e), "err");
 }
@@ -386,9 +450,92 @@ async function toggleDone(id) {
   } finally { doneBusy.delete(id); }
 }
 
+// ---------------- 기약 없는 할 일 화면 ----------------
+let taskSeq = 0;
+async function refreshTasks() {
+  if (!tokenOk()) { render(); return; }
+  const seq = ++taskSeq;
+  $("#reload").classList.add("spin");
+  try {
+    const tasks = await listTasks();
+    if (seq !== taskSeq) return;
+    Object.assign(S, {tasks, tasksErr: null, tasksNeedScope: false, tasksAt: Date.now()});
+  } catch (e) {
+    if (seq !== taskSeq) return;
+    if (e instanceof NeedAuth) { authRedirect(true); return; }
+    Object.assign(S, {tasksErr: e.message, tasksNeedScope: e instanceof NeedTasksScope});
+  } finally { $("#reload").classList.remove("spin"); }
+  render();
+}
+async function addTask(text) {
+  const title = text.split(/\s+/).join(" ").slice(0, 300);
+  setInput("");
+  S.busy = true;
+  try {
+    const rec = await tAdd(title);
+    S.undo.push({desc: "할 일: " + title, batch: [rec]});
+    setStatus("할 일 추가: " + title, "ok", true);
+    await refreshTasks();
+  } catch (e) { handleErr(e, text); render(); } finally { S.busy = false; }
+}
+async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | row(진행 중 켜기/끄기) | delete | clear
+  if (S.busy) return;
+  const t = S.tasks.find(x => x.id === id);
+  let state = null;
+  if (kind === "check") state = t.state === "done" ? "todo" : "done";
+  else if (kind === "row") { if (t.state === "done") return; state = t.state === "doing" ? "todo" : "doing"; }
+  if (state) { t.state = state; render(); }   // 화면은 바로 바꾸고 저장 결과로 다시 그린다
+  S.busy = true;
+  try {
+    let recs, msg;
+    if (state) {
+      recs = [await tSet(id, state)];
+      msg = {done: "완료했어요: ", doing: "진행 중: ", todo: "할 일로 되돌렸어요: "}[state] + t.title;
+    } else if (kind === "delete") {
+      recs = [await tDelete(id)];
+      msg = "지웠어요: " + t.title;
+    } else {
+      recs = [];
+      for (const x of S.tasks.filter(x => x.state === "done")) recs.push(await tDelete(x.id));
+      msg = "완료한 할 일을 지웠어요";
+    }
+    if (recs.length) S.undo.push({desc: msg, batch: recs});
+    setStatus(msg, "ok", recs.length > 0);
+  } catch (e) { handleErr(e); } finally { S.busy = false; }
+  await refreshTasks();
+}
+function taskRow(t) {
+  return `<div class="tk ${t.state}" data-tid="${esc(t.id)}">
+    <button class="ck" data-tck="${esc(t.id)}" role="checkbox" aria-checked="${t.state === "done"}" aria-label="완료"></button>
+    <div class="tk-t">${esc(t.title)}${t.state === "doing" ? `<span class="tk-badge">진행 중</span>` : ""}</div>
+    <button class="tk-x" data-tdel="${esc(t.id)}" aria-label="지우기">✕</button></div>`;
+}
+function renderTasks() {
+  if (!tokenOk()) return "";
+  if (S.tasksErr)
+    return `<div class="card"><p>${esc(S.tasksErr)}</p>` +
+      (S.tasksNeedScope ? `<button class="btn primary wide" id="tkScope">구글 다시 연결 (할 일 권한 추가)</button>
+        <div class="hint" style="margin-top:8px">"확인되지 않은 앱" → 고급 → ClaudeCal(으)로 이동, 그리고 <b>할 일 권한에 체크</b>해 주세요.</div>` : "") + `</div>`;
+  if (!S.tasks.length)
+    return `<div class="empty"><p>날짜 없이 언젠가 해야 할 일을 아래 칸에 적어 두세요.</p><p class="hint">☐ 체크 = 완료 · 줄 누르기 = 진행 중</p></div>`;
+  const active = S.tasks.filter(t => t.state !== "done"), done = S.tasks.filter(t => t.state === "done");
+  return `<div class="dayh">할 일 <span class="rel">${active.length || ""}</span></div>` + active.map(taskRow).join("") +
+    (done.length ? `<div class="dayh tk-sec">완료 ${done.length}<button class="link" id="tkClear">모두 지우기</button></div>` + done.map(taskRow).join("") : "");
+}
+function setTab(tab) {
+  if (S.tab === tab) return;
+  S.tab = tab;
+  store.set("tab", tab);
+  setStatus("");
+  render();
+  if (tab === "tasks") { if (!S.tasksAt || Date.now() - S.tasksAt > 30e3) refreshTasks(); }
+  else if (Date.now() - S.loadedAt > 30e3) refresh();
+}
+
 // ---------------- 불러오기·그리기 ----------------
 let loadSeq = 0;
 async function refresh() {
+  if (S.tab === "tasks") return refreshTasks();
   if (!tokenOk()) { render(); return; }
   const seq = ++loadSeq, today = C.isoD(new Date());
   const [f, t] = S.query ? [S.query.from, S.query.to] : [today, C.addDays(today, 14)];
@@ -438,8 +585,10 @@ function render() {
   $("#kForm").hidden = !needKey;
   $("#kDone").textContent = needKey ? "" : "저장됨";
   $("#relogin").hidden = !(connected() && !tokenOk());
-  $("#acct").textContent = DEMO ? "시험 모드" : S.email;
   $("#installHint").hidden = !(S.installEvt || isIos());
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
+  $("#q").placeholder = S.tab === "tasks" ? "날짜 없는 할 일 적고 ➤" : "모레 7시 강남 동기 모임";
+  if (S.tab === "tasks") { $("#list").innerHTML = renderTasks(); return; }
 
   const td = C.isoD(new Date());
   let h = "";
@@ -589,6 +738,8 @@ function takeShared() {   // 안드로이드 공유 목록에서 오면 ?title=&
   if (!uniq.length) return;
   store.set("pending", {text: uniq.join("\n").slice(0, 3000), at: Date.now()});
   history.replaceState(null, "", location.pathname + (DEMO ? `?demo=${DEMO}` : ""));
+  S.tab = "cal";   // 공유받은 글은 일정으로 (Claude가 날짜를 읽는다)
+  store.set("tab", "cal");
 }
 function resumePending() {   // 공유받았거나 구글 로그인 다녀오느라 맡겨 둔 글이 있으면 이어서 등록
   const p = store.get("pending");
@@ -635,17 +786,7 @@ function bind() {
     }
   });
   $("#send").onclick = () => submit();
-  $("#paste").onclick = async () => {
-    try {
-      const t = (await navigator.clipboard.readText()).trim();
-      if (!t) { setStatus("복사한 글이 없어요.", "warn"); return; }
-      setInput(t);
-      submit(t);
-    } catch {
-      setStatus("붙여넣기 권한이 없어요. 입력 칸을 길게 눌러 붙여넣어 주세요.", "warn");
-      q.focus();
-    }
-  };
+  $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
   $("#undoBtn").onclick = undo;
   $("#cfYes").onclick = () => answerConfirm(true);
   $("#cfNo").onclick = () => answerConfirm(false);
@@ -675,6 +816,12 @@ function bind() {
   $("#shDel").onclick = () => deleteFromSheet(null);
   $("#shScope").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (b) b.dataset.s ? deleteFromSheet(b.dataset.s) : ($("#shScope").hidden = true); });
   $("#list").addEventListener("click", e => {
+    if (e.target.id === "tkScope") return authRedirect(false);
+    if (e.target.id === "tkClear") return taskAction(null, "clear");
+    const tck = e.target.closest("[data-tck]"), tdel = e.target.closest("[data-tdel]"), trow = e.target.closest("[data-tid]");
+    if (tck) return taskAction(tck.dataset.tck, "check");
+    if (tdel) return taskAction(tdel.dataset.tdel, "delete");
+    if (trow) return taskAction(trow.dataset.tid, "row");
     const ck = e.target.closest("[data-done]");
     if (ck) { toggleDone(ck.dataset.done); return; }
     const ex = e.target.closest("[data-ex]");
