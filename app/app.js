@@ -232,10 +232,11 @@ async function tSet(id, state) {
   if (back.status !== "completed") back.completed = null;
   return [{t: "task_patch", id, body: back}];
 }
-async function tNote(id, notes) {
+async function tEdit(id, title, notes) {   // 제목·메모 고치기 (진행 중 표시 '▶ '는 그대로)
   const old = await google("GET", taskPath(id), {api: "tasks"});
-  await google("PATCH", taskPath(id), {api: "tasks", body: {notes: notes || null}});
-  return [{t: "task_patch", id, body: {notes: old.notes ?? null}}];
+  const doing = (old.title || "").startsWith(DOING) && old.status !== "completed";
+  await google("PATCH", taskPath(id), {api: "tasks", body: {title: (doing ? DOING : "") + title, notes: notes || null}});
+  return [{t: "task_patch", id, body: {title: old.title || "", notes: old.notes ?? null}}];
 }
 async function tDelete(id) {
   const old = await google("GET", taskPath(id), {api: "tasks"});
@@ -396,12 +397,12 @@ function askConfirm(plan, reply, text) {
   $("#confirm").hidden = false;
   setStatus("");
 }
-function askYesNo(text, items = []) {   // 지우기 전 확인 카드 — 답을 true/false로
+function askDelete(items) {   // 지우기 전 확인 카드 — 답을 true/false로
   if (S.pending) answerConfirm(false);
   return new Promise(resolve => {
     S.pending = {resolve};
-    $("#cfYes").textContent = "지우기";
-    $("#cfText").textContent = text;
+    $("#cfYes").textContent = "삭제";
+    $("#cfText").textContent = "삭제할까요?";
     $("#cfList").innerHTML = items.map(x => `<li>${esc(x)}</li>`).join("");
     $("#confirm").hidden = false;
   });
@@ -501,10 +502,10 @@ async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | r
   let state = null;
   if (kind === "check") state = t.state === "done" ? "todo" : "done";
   else if (kind === "row") { if (t.state === "done") return; state = t.state === "doing" ? "todo" : "doing"; }
-  if (kind === "delete" && !(await askYesNo("이 할 일을 지울까요?", [t.title]))) return;
+  if (kind === "delete" && !(await askDelete([t.title]))) return;
   if (kind === "clear") {
     const n = S.tasks.filter(x => x.state === "done").length;
-    if (!n || !(await askYesNo(`완료한 할 일 ${n}개를 지울까요?`))) return;
+    if (!n || !(await askDelete([`완료한 할 일 ${n}개`]))) return;
   }
   if (state) { t.state = state; render(); }   // 화면은 바로 바꾸고 저장 결과로 다시 그린다
   S.busy = true;
@@ -539,23 +540,23 @@ function openMemo(id) {
   const t = S.tasks.find(x => x.id === id);
   if (!t) return;
   S.memoTask = t;
-  $("#mmTitle").textContent = t.title;
+  $("#mmTitle").value = t.title;
   $("#mmText").value = t.notes || "";
   $("#memo").hidden = false;
   $("#mmText").focus();
 }
-async function saveMemo() {   // 닫으면 늘 저장 (메모장처럼). 바뀐 게 없으면 그냥 닫는다
-  const t = S.memoTask, notes = $("#mmText").value.trim();
+async function saveMemo() {   // 닫으면 늘 저장 (메모장처럼). 바뀐 게 없거나 제목을 비웠으면 그냥 닫는다
+  const t = S.memoTask, title = $("#mmTitle").value.split(/\s+/).join(" ").trim(), notes = $("#mmText").value.trim();
   $("#memo").hidden = true;
   S.memoTask = null;
-  if (!t || notes === (t.notes || "").trim() || S.busy) return;
-  t.notes = notes;
+  if (!t || !title || (title === t.title && notes === (t.notes || "").trim()) || S.busy) return;
+  Object.assign(t, {title, notes});
   render();
   S.busy = true;
   try {
-    const rec = await tNote(t.id, notes);
-    S.undo.push({desc: "메모: " + t.title, batch: [rec]});
-    setStatus((notes ? "메모 저장: " : "메모 지움: ") + t.title, "ok", true);
+    const rec = await tEdit(t.id, title, notes);
+    S.undo.push({desc: "할 일 수정: " + title, batch: [rec]});
+    setStatus("저장했어요: " + title, "ok");
   } catch (e) { handleErr(e); } finally { S.busy = false; }
   await refreshTasks();
 }
@@ -719,8 +720,6 @@ async function openSheet(id) {
   $("#shLoc").textContent = ev.location ? "📍 " + ev.location : "";
   $("#shNote").textContent = ev.note || "";
   $("#shDone").textContent = ev.done ? "완료 취소" : "완료";
-  $("#shDel").textContent = "삭제";
-  $("#shDel").classList.remove("armed");
   $("#shScope").hidden = true;
   $("#shOpen").hidden = !ev.link;
   $("#shOpen").href = ev.link || "#";
@@ -733,14 +732,13 @@ function closeSheet() { $("#sheet").hidden = true; S.sheetEv = null; }
 async function deleteFromSheet(scope) {
   const ev = S.sheetEv;
   if (!ev || S.busy) return;
-  if (!scope) {
-    if (ev.recurring) { $("#shScope").hidden = false; return; }
-    if (!$("#shDel").classList.contains("armed")) {
-      $("#shDel").classList.add("armed");
-      $("#shDel").textContent = "한 번 더 누르면 삭제";
-      return;
-    }
-    scope = "one";
+  if (!scope) {   // 먼저 묻는다: 반복이면 어디까지, 아니면 삭제할까요?
+    $("#shScope").innerHTML = ev.recurring
+      ? `<p>반복 일정이에요. 어디까지 삭제할까요?</p><div class="row"><button class="btn" data-s="one">이 일정만</button>` +
+        `<button class="btn danger" data-s="all">반복 전체</button><button class="btn" data-s="">취소</button></div>`
+      : `<p>삭제할까요?</p><div class="row"><button class="btn" data-s="">취소</button><button class="btn danger armed" data-s="one">삭제</button></div>`;
+    $("#shScope").hidden = false;
+    return;
   }
   closeSheet();
   S.busy = true;
