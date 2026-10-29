@@ -2,7 +2,7 @@
 //  · 구글: OAuth 암묵적 흐름(리디렉션)으로 1시간짜리 토큰. 만료되면 조용히 다시 받아 온다(prompt=none).
 //  · Claude: 사용자가 넣은 본인 API 키로 브라우저에서 바로 호출 (키는 이 휴대폰 localStorage에만).
 //  · 안드로이드: 홈 화면에 추가하면 공유 목록에 뜬다 (카톡 메시지 공유 → 바로 등록).
-//  · 위쪽 [일정 | 할 일]: '할 일'은 날짜 없는 일 — 구글 할 일(Tasks) 기본 목록. 체크 = 완료, 줄 누르기 = 진행 중('▶ ' 제목 앞).
+//  · 위쪽 [일정 | 할 일]: '할 일'은 날짜 없는 일 — 구글 할 일(Tasks) 기본 목록. 체크 = 완료, 줄 누르기 = 수정(이름·메모·삭제).
 import { SYSTEM_PROMPT, SCHEMA, MODELS } from "./prompt.js";
 import * as C from "./cal.js";
 
@@ -10,7 +10,7 @@ const GOOGLE_CLIENT_ID = "560537057198-3jls07opathhum0n6neh21gt171v0dv7.apps.goo
 const SCOPE_CAL = "https://www.googleapis.com/auth/calendar.events";
 const SCOPE_TASKS = "https://www.googleapis.com/auth/tasks";
 const BASES = {cal: "https://www.googleapis.com/calendar/v3/calendars/primary/", tasks: "https://tasks.googleapis.com/tasks/v1/lists/@default/"};
-const DOING = "▶ ";
+const DOING = "▶ ";   // 예전 '진행 중' 표시 — 이제 없는 기능이라 읽을 때 떼고, 고칠 때 지운다
 const TASKS_SCOPE_MSG = "할 일을 쓰려면 구글 권한을 하나 더 받아야 해요.";
 const REDIRECT = new URL("./", location.href).href;   // 구글 클라이언트에 등록한 리디렉션 주소와 같아야 함
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.134.0/+esm";
@@ -202,8 +202,8 @@ async function gUndo(records) {
 // ---------------- 기약 없는 할 일 (구글 할 일 기본 목록) — 위젯의 GoogleStore와 같은 규칙 ----------------
 const taskPath = id => `tasks/${encodeURIComponent(id)}`;
 function taskFromGoogle(t) {
-  const title = t.title || "", doing = title.startsWith(DOING);
-  return {id: t.id, title: doing ? title.slice(DOING.length) : title, state: t.status === "completed" ? "done" : doing ? "doing" : "todo",
+  const title = t.title || "";
+  return {id: t.id, title: title.startsWith(DOING) ? title.slice(DOING.length) : title, state: t.status === "completed" ? "done" : "todo",
           notes: t.notes || "", done_at: t.completed || "", pos: t.position || ""};
 }
 async function listTasks() {
@@ -215,7 +215,7 @@ async function listTasks() {
     pageToken = res.nextPageToken;
   } while (pageToken && items.length <= 1000);
   const all = items.filter(t => !t.deleted && (t.title || "").trim()).map(taskFromGoogle);
-  const active = all.filter(t => t.state !== "done").sort((a, b) => (a.state !== "doing") - (b.state !== "doing") || (a.pos < b.pos ? -1 : 1));
+  const active = all.filter(t => t.state !== "done").sort((a, b) => (a.pos < b.pos ? -1 : 1));
   const done = all.filter(t => t.state === "done").sort((a, b) => (a.done_at < b.done_at ? 1 : -1)).slice(0, 50);
   return [...active, ...done];
 }
@@ -225,17 +225,16 @@ async function tAdd(title) {
 }
 async function tSet(id, state) {
   const old = await google("GET", taskPath(id), {api: "tasks"});
-  const body = {title: (state === "doing" ? DOING : "") + taskFromGoogle(old).title, status: state === "done" ? "completed" : "needsAction"};
+  const body = {title: taskFromGoogle(old).title, status: state === "done" ? "completed" : "needsAction"};
   if (state !== "done") body.completed = null;
   await google("PATCH", taskPath(id), {api: "tasks", body});
   const back = {title: old.title || "", status: old.status || "needsAction"};
   if (back.status !== "completed") back.completed = null;
   return [{t: "task_patch", id, body: back}];
 }
-async function tEdit(id, title, notes) {   // 제목·메모 고치기 (진행 중 표시 '▶ '는 그대로)
+async function tEdit(id, title, notes) {   // 제목·메모 고치기
   const old = await google("GET", taskPath(id), {api: "tasks"});
-  const doing = (old.title || "").startsWith(DOING) && old.status !== "completed";
-  await google("PATCH", taskPath(id), {api: "tasks", body: {title: (doing ? DOING : "") + title, notes: notes || null}});
+  await google("PATCH", taskPath(id), {api: "tasks", body: {title, notes: notes || null}});
   return [{t: "task_patch", id, body: {title: old.title || "", notes: old.notes ?? null}}];
 }
 async function tDelete(id) {
@@ -496,12 +495,11 @@ async function addTask(text) {
     await refreshTasks();
   } catch (e) { handleErr(e, text); render(); } finally { S.busy = false; }
 }
-async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | row(진행 중 켜기/끄기) | delete | clear
+async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | delete | clear
   if (S.busy) return;
   const t = S.tasks.find(x => x.id === id);
   let state = null;
   if (kind === "check") state = t.state === "done" ? "todo" : "done";
-  else if (kind === "row") { if (t.state === "done") return; state = t.state === "doing" ? "todo" : "doing"; }
   if (kind === "delete" && !(await askDelete([t.title]))) return;
   if (kind === "clear") {
     const n = S.tasks.filter(x => x.state === "done").length;
@@ -513,7 +511,7 @@ async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | r
     let recs, msg;
     if (state) {
       recs = [await tSet(id, state)];
-      msg = {done: "완료했어요: ", doing: "진행 중: ", todo: "할 일로 되돌렸어요: "}[state] + t.title;
+      msg = (state === "done" ? "완료했어요: " : "할 일로 되돌렸어요: ") + t.title;
     } else if (kind === "delete") {
       recs = [await tDelete(id)];
       msg = "지웠어요: " + t.title;
@@ -531,9 +529,8 @@ function taskRow(t) {
   const first = (t.notes || "").split("\n")[0];
   return `<div class="tk ${t.state}" data-tid="${esc(t.id)}">
     <button class="ck" data-tck="${esc(t.id)}" role="checkbox" aria-checked="${t.state === "done"}" aria-label="완료"></button>
-    <div class="tk-b"><div class="tk-t">${esc(t.title)}${t.state === "doing" ? `<span class="tk-badge">진행 중</span>` : ""}</div>
+    <div class="tk-b"><div class="tk-t">${esc(t.title)}</div>
       ${first ? `<div class="tk-n">${esc(first)}</div>` : ""}</div>
-    <button class="tk-m${t.notes ? " has" : ""}" data-tmemo="${esc(t.id)}" aria-label="메모">📝</button>
     <button class="tk-x" data-tdel="${esc(t.id)}" aria-label="지우기">✕</button></div>`;
 }
 function openMemo(id) {
@@ -542,8 +539,7 @@ function openMemo(id) {
   S.memoTask = t;
   $("#mmTitle").value = t.title;
   $("#mmText").value = t.notes || "";
-  $("#memo").hidden = false;
-  $("#mmText").focus();
+  $("#memo").hidden = false;   // 키보드가 바로 올라오지 않게 자동으로 누르지 않는다
 }
 async function saveMemo() {   // 닫으면 늘 저장 (메모장처럼). 바뀐 게 없거나 제목을 비웠으면 그냥 닫는다
   const t = S.memoTask, title = $("#mmTitle").value.split(/\s+/).join(" ").trim(), notes = $("#mmText").value.trim();
@@ -567,7 +563,7 @@ function renderTasks() {
       (S.tasksNeedScope ? `<button class="btn primary wide" id="tkScope">구글 다시 연결 (할 일 권한 추가)</button>
         <div class="hint" style="margin-top:8px">"확인되지 않은 앱" → 고급 → ClaudeCal(으)로 이동, 그리고 <b>할 일 권한에 체크</b>해 주세요.</div>` : "") + `</div>`;
   if (!S.tasks.length)
-    return `<div class="empty"><p>날짜 없이 언젠가 해야 할 일을 아래 칸에 적어 두세요.</p><p class="hint">☐ 체크 = 완료 · 줄 누르기 = 진행 중</p></div>`;
+    return `<div class="empty"><p>날짜 없이 언젠가 해야 할 일을 아래 칸에 적어 두세요.</p><p class="hint">☐ 체크 = 완료 · 누르면 수정 (이름·메모·삭제)</p></div>`;
   const active = S.tasks.filter(t => t.state !== "done"), done = S.tasks.filter(t => t.state === "done");
   return `<div class="dayh">할 일 <span class="rel">${active.length || ""}</span></div>` + active.map(taskRow).join("") +
     (done.length ? `<div class="dayh tk-sec">완료 ${done.length}<button class="link" id="tkClear">모두 지우기</button></div>` + done.map(taskRow).join("") : "");
@@ -863,6 +859,12 @@ function bind() {
   for (const id of ["sheet", "settings"]) $("#" + id).addEventListener("click", e => { if (e.target.id === id) { $("#" + id).hidden = true; S.sheetEv = null; } });
   $("#memo").addEventListener("click", e => { if (e.target.id === "memo") saveMemo(); });   // 바깥을 눌러 닫아도 저장
   $("#mmDone").onclick = saveMemo;
+  $("#mmDel").onclick = () => {   // 수정 화면의 [삭제] — 창을 닫고 '삭제할까요?'를 묻는다
+    const t = S.memoTask;
+    $("#memo").hidden = true;
+    S.memoTask = null;
+    if (t) taskAction(t.id, "delete");
+  };
   $("#shDone").onclick = () => S.sheetEv && toggleDone(S.sheetEv.id);
   $("#shDel").onclick = () => deleteFromSheet(null);
   $("#shScope").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (b) b.dataset.s ? deleteFromSheet(b.dataset.s) : ($("#shScope").hidden = true); });
@@ -870,11 +872,9 @@ function bind() {
     if (e.target.id === "tkScope") return authRedirect(false);
     if (e.target.id === "tkClear") return taskAction(null, "clear");
     const tck = e.target.closest("[data-tck]"), tdel = e.target.closest("[data-tdel]"), trow = e.target.closest("[data-tid]");
-    const tmemo = e.target.closest("[data-tmemo]");
-    if (tmemo) return openMemo(tmemo.dataset.tmemo);
     if (tck) return taskAction(tck.dataset.tck, "check");
     if (tdel) return taskAction(tdel.dataset.tdel, "delete");
-    if (trow) return taskAction(trow.dataset.tid, "row");
+    if (trow) return openMemo(trow.dataset.tid);   // 줄을 누르면 수정 화면
     const ck = e.target.closest("[data-done]");
     if (ck) { toggleDone(ck.dataset.done); return; }
     const ex = e.target.closest("[data-ex]");
