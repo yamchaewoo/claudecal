@@ -391,15 +391,27 @@ async function run(plan, reply, text) {
 function askConfirm(plan, reply, text) {
   S.pending = {plan, reply, text};
   $("#cfText").textContent = reply || "이렇게 할까요?";
+  $("#cfYes").textContent = "그렇게 해 줘";
   $("#cfList").innerHTML = plan.map(p => `<li>${esc(p.desc)}</li>`).join("");
   $("#confirm").hidden = false;
   setStatus("");
+}
+function askYesNo(text, items = []) {   // 지우기 전 확인 카드 — 답을 true/false로
+  if (S.pending) answerConfirm(false);
+  return new Promise(resolve => {
+    S.pending = {resolve};
+    $("#cfYes").textContent = "지우기";
+    $("#cfText").textContent = text;
+    $("#cfList").innerHTML = items.map(x => `<li>${esc(x)}</li>`).join("");
+    $("#confirm").hidden = false;
+  });
 }
 async function answerConfirm(yes) {
   const job = S.pending;
   S.pending = null;
   $("#confirm").hidden = true;
   if (!job) return;
+  if (job.resolve) return job.resolve(yes);
   if (!yes) { setStatus("취소했어요. 아무것도 바꾸지 않았어요."); return; }
   S.busy = true;
   try { await run(job.plan, job.reply, job.text); } catch (e) { handleErr(e); } finally { S.busy = false; }
@@ -489,6 +501,11 @@ async function taskAction(id, kind) {   // kind: check(완료 켜기/끄기) | r
   let state = null;
   if (kind === "check") state = t.state === "done" ? "todo" : "done";
   else if (kind === "row") { if (t.state === "done") return; state = t.state === "doing" ? "todo" : "doing"; }
+  if (kind === "delete" && !(await askYesNo("이 할 일을 지울까요?", [t.title]))) return;
+  if (kind === "clear") {
+    const n = S.tasks.filter(x => x.state === "done").length;
+    if (!n || !(await askYesNo(`완료한 할 일 ${n}개를 지울까요?`))) return;
+  }
   if (state) { t.state = state; render(); }   // 화면은 바로 바꾸고 저장 결과로 다시 그린다
   S.busy = true;
   try {
