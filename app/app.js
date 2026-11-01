@@ -53,6 +53,8 @@ function authRedirect(silent) {   // 구글로 넘어가면 true
   const p = new URLSearchParams({client_id: GOOGLE_CLIENT_ID, redirect_uri: REDIRECT, response_type: "token", scope,
                                  include_granted_scopes: "true", state, prompt: silent ? "none" : "select_account"});
   if (S.email) p.set("login_hint", S.email);
+  S.leaving = true;
+  document.body.classList.add("booting");   // 넘어가는 동안 지금 화면이 비치지 않게
   location.assign("https://accounts.google.com/o/oauth2/v2/auth?" + p);
   return true;
 }
@@ -813,7 +815,16 @@ function resumePending() {   // 공유받았거나 구글 로그인 다녀오느
 }
 
 // ---------------- 시작 ----------------
+const unboot = () => { if (!S.leaving) document.body.classList.remove("booting"); };
+function fitViewport() {   // 키보드가 화면을 줄이지 않는 브라우저에서도 입력칸이 키보드 위에 오게
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const covered = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+  document.body.style.bottom = covered ? covered + "px" : "";
+}
+
 async function init() {
+  setTimeout(unboot, 4000);   // 무슨 일이 있어도 4초 뒤엔 화면을 보여 준다
   if (DEMO) {
     const demo = await import("./demo.js");
     google = demo.fakeGoogle;
@@ -829,7 +840,8 @@ async function init() {
   else if (S.authError === "access_denied") setStatus("구글 연결을 취소했어요.", "warn");
   if (connected() && !tokenOk() && authRedirect(true)) return;
   if (S.key) loadSdk().catch(() => {});   // Claude 부품 미리 받아 두기
-  await refresh();
+  await Promise.race([refresh(), new Promise(r => setTimeout(r, 2500))]);   // 목록을 그린 뒤 (느리면 2.5초까지만) 보여 준다
+  unboot();
   resumePending();
   if ("serviceWorker" in navigator && !DEMO) navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
@@ -899,6 +911,9 @@ function bind() {
     const row = e.target.closest("[data-id]");
     if (row) openSheet(row.dataset.id);
   });
+  window.visualViewport?.addEventListener("resize", fitViewport);
+  window.visualViewport?.addEventListener("scroll", fitViewport);
+  window.addEventListener("pageshow", fitViewport);
   window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); S.installEvt = e; render(); });
   document.addEventListener("visibilitychange", () => {   // 다시 열었을 때: 토큰이 만료됐으면 받아 오고, 오래됐으면 새로고침
     if (document.visibilityState !== "visible" || S.busy) return;
