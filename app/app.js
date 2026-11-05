@@ -342,7 +342,8 @@ async function submit(text) {
   text = (text ?? $("#q").value).trim();
   if (!text || S.busy) return;
   if (S.tab === "tasks") return addTask(text);   // 할 일은 Claude 없이 그대로 적는다
-  if (!S.key) { setStatus("먼저 Claude API 키를 넣어 주세요.", "warn"); render(); return; }
+  const quick = C.quickParse(text);   // ⚡ '내일 3시 치과' 같은 단순한 등록은 Claude 없이 바로 (PC와 같은 규칙)
+  if (!quick && !S.key) { setStatus("이건 Claude가 읽어야 해요. 먼저 Claude API 키를 넣어 주세요. (‘내일 3시 치과’ 같은 단순한 등록은 키 없이도 돼요)", "warn"); render(); return; }
   if (!tokenOk()) {   // 토큰이 만료됐으면 글을 맡겨 두고 구글에 다녀온다
     if (!connected()) { setStatus("먼저 구글 캘린더를 연결해 주세요.", "warn"); render(); return; }
     store.set("pending", {text, at: Date.now()});
@@ -351,9 +352,22 @@ async function submit(text) {
     return authRedirect(true);
   }
   S.busy = true;
-  setBusy("Claude가 읽는 중");
   S.hist = [text, ...S.hist.filter(x => x !== text)].slice(0, 30);
   S.hIdx = -1;
+  if (quick) {
+    try {
+      const {plan} = await makePlan({actions: [quick], reply: ""}, {});
+      setInput("");
+      await run(plan, "", text, true);
+    } catch (e) {
+      handleErr(e, text);
+    } finally {
+      S.busy = false;
+      $("#send").disabled = false;
+    }
+    return;
+  }
+  setBusy("Claude가 읽는 중");
   try {
     const today = C.isoD(new Date());
     loadSdk().catch(() => {});
@@ -379,14 +393,14 @@ async function submit(text) {
   }
 }
 
-async function run(plan, reply, text) {
+async function run(plan, reply, text, quick = false) {
   setBusy("구글 캘린더에 넣는 중");
   const batch = await executePlan(plan);
   S.undo.push({desc: text, batch});
   S.undo = S.undo.slice(-30);
   if (!reply)
     reply = plan.map(p => p.desc.slice(p.desc.indexOf(" · ") + 3)).join(" / ") + (plan.every(p => p.op === "add") ? " 등록했어요" : " 처리했어요");
-  setStatus(reply, "ok", true);
+  setStatus((quick ? "⚡ " : "") + reply, "ok", true);
   await refresh();
 }
 
@@ -586,12 +600,13 @@ async function refresh() {
   if (S.tab === "tasks") return refreshTasks();
   if (!tokenOk()) { render(); return; }
   const seq = ++loadSeq, today = C.isoD(new Date());
-  const [f, t] = S.query ? [S.query.from, S.query.to] : [today, C.addDays(today, 14)];
+  // 다가오는 2주 + 지난 30일 중 아직 완료 안 한 일정 (반복 일정의 지난 회차는 빼고)
+  const [f, t] = S.query ? [S.query.from, S.query.to] : [C.addDays(today, -30), C.addDays(today, 14)];
   $("#reload").classList.add("spin");
   try {
     const evs = await listRange(f, t);
     if (seq !== loadSeq) return;
-    S.events = evs;
+    S.events = S.query ? evs : evs.filter(e => e.end_date >= today || (!e.done && !e.recurring));
     S.loadedAt = Date.now();
   } catch (e) {
     if (seq !== loadSeq) return;
@@ -657,14 +672,16 @@ function render() {
     const from = S.query ? S.query.from : td;
     if (!S.query) byDay.set(td, []);
     for (const ev of S.events) {
-      const d = ev.date < from ? from : ev.date;   // 범위 전에 시작해 이어지는 일정은 첫날에
+      let d = ev.date;   // 범위 전에 시작해 이어지는 일정은 첫날(다가오는 일정이면 오늘)에, 이미 끝난 지난 일정은 제날짜에
+      if (S.query) { if (d < from) d = from; }
+      else if (ev.end_date >= td && d < td) d = td;
       if (!byDay.has(d)) byDay.set(d, []);
       byDay.get(d).push(ev);
     }
     for (const d of [...byDay.keys()].sort()) {
-      const diff = C.dayDiff(d, td), rel = {0: "오늘", 1: "내일", 2: "모레"}[diff] || "";
+      const diff = C.dayDiff(d, td), rel = {"-1": "어제 · 안 끝냄", 0: "오늘", 1: "내일", 2: "모레"}[diff] || (diff < 0 ? "지남 · 안 끝냄" : "");
       const evs = byDay.get(d), dd = C.parseD(d);
-      h += `<div class="dayh ${diff === 0 ? "today" : ""} ${C.wday(dd) === 6 ? "sun" : C.wday(dd) === 5 ? "sat" : ""}">${C.dlabel(d)}` +
+      h += `<div class="dayh ${diff === 0 ? "today" : ""} ${diff < 0 ? "past" : ""} ${C.wday(dd) === 6 ? "sun" : C.wday(dd) === 5 ? "sat" : ""}">${C.dlabel(d)}` +
         `${rel ? ` <span class="rel">${rel}</span>` : ""}</div>` +
         (evs.length ? evs.map(evRow).join("") : `<div class="noev">일정 없음</div>`);
     }
@@ -809,7 +826,7 @@ function resumePending() {   // 공유받았거나 구글 로그인 다녀오느
   if (!p) return;
   if (Date.now() - p.at > 10 * 60e3) { store.set("pending", null); return; }
   setInput(p.text);
-  if (!S.key || !connected()) { setStatus("공유받은 글을 넣어 뒀어요. 위 설정을 마치면 등록할게요.", "warn"); return; }
+  if ((!S.key && !C.quickParse(p.text)) || !connected()) { setStatus("공유받은 글을 넣어 뒀어요. 위 설정을 마치면 등록할게요.", "warn"); return; }
   store.set("pending", null);
   submit(p.text);
 }

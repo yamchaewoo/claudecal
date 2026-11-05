@@ -243,3 +243,101 @@ export function clean(body) {   // insert용: null 칸 빼기
 
 export const doneBody = done => ({extendedProperties: {private: {[DONE_KEY]: done ? "1" : "0"}}});
 export const gDay = x => x.date || isoD(new Date(x.dateTime));   // 구글 start/end 칸 → 이 지역 날짜
+
+// ---------------- 빠른 해석기 (Claude 없이) — PC의 calcore.quick_parse와 같은 규칙 ----------------
+// '11/20 금 3시 조합론 시험', '다음주 화 PAE 에세이 마감' 같은 단순 등록만 바로 해석. 조금이라도 애매하면 null → Claude에게.
+// (옛 아이폰 사파리도 읽을 수 있게 정규식 '뒤돌아보기(?<…)'는 안 쓴다)
+const NEED_CLAUDE = /\?|취소|삭제|지워|지우|빼|미뤄|미루|당겨|바꿔|바꾸|변경|옮겨|옮기|수정|연기|뭐|무슨|언제|있어|있나|알려|보여|매일|매주|매달|매월|매년|마다|격주|반복|부터|까지|전에|에서|,|그리고|오늘부터/;
+const QWD = "월화수목금토일";
+const AM = ["오전", "아침", "새벽"], PM = ["오후", "점심", "저녁", "밤", "낮"];
+
+function qHour(pfx, h, mi) {   // 오전/오후 표시와 상식으로 24시간제 [시, 분]. 애매하면 null
+  if (h > 23 || mi > 59) return null;
+  if (AM.includes(pfx)) return h > 12 ? null : [h === 12 ? 0 : h, mi];
+  if (PM.includes(pfx)) return h === 12 ? (pfx === "밤" ? null : [12, mi]) : [h < 12 ? h + 12 : h, mi];
+  if (h >= 1 && h <= 6) return [h + 12, mi];   // 표시 없는 1~6시는 오후
+  if (h === 12 || h >= 13) return [h, mi];
+  return null;                                  // 0시, 7~11시는 오전인지 저녁인지 애매
+}
+function mkDate(y, m, d) { const x = new Date(y, m - 1, d); return x.getFullYear() === y && x.getMonth() === m - 1 && x.getDate() === d ? isoD(x) : null; }
+function yearFor(today, mo, d) {   // 두 달보다 더 지난 날짜면 내년
+  const t = parseD(today), x = mkDate(t.getFullYear(), mo, d);
+  if (!x) return null;
+  return x < addDays(today, -60) ? mkDate(t.getFullYear() + 1, mo, d) : x;
+}
+const hhmm = p => `${pad(p[0])}:${pad(p[1])}`;
+const cmp = (a, b) => a[0] * 60 + a[1] - (b[0] * 60 + b[1]);
+
+export function quickParse(text, today = isoD(new Date())) {
+  const s = " " + text.trim() + " ";
+  if (s.length > 60 || NEED_CLAUDE.test(s)) return null;
+  const dates = [];   // [시작, 끝, 날짜]
+  for (const m of s.matchAll(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/g)) {
+    const d = mkDate(+m[1], +m[2], +m[3]);
+    if (!d) return null;
+    dates.push([m.index, m.index + m[0].length, d]);
+  }
+  for (const m of s.matchAll(/([^\d/.\-])(\d{1,2})\s*\/\s*(\d{1,2})(?![\d/])/g))
+    dates.push([m.index + 1, m.index + m[0].length, yearFor(today, +m[2], +m[3])]);
+  for (const m of s.matchAll(/(\D)(\d{1,2})\s*월\s*(\d{1,2})\s*일/g))
+    dates.push([m.index + 1, m.index + m[0].length, yearFor(today, +m[2], +m[3])]);
+  for (const m of s.matchAll(/(오늘|내일|모레|글피)/g))
+    dates.push([m.index, m.index + m[0].length, addDays(today, ["오늘", "내일", "모레", "글피"].indexOf(m[1]))]);
+  const monday = addDays(today, -wday(parseD(today)));
+  for (const m of s.matchAll(/(이번\s*주|다음\s*주|담주|다다음\s*주)\s*([월화수목금토일])(?:요일)?(?![가-힣])/g)) {
+    const wk = m[1].startsWith("다다음") ? 2 : m[1].startsWith("이번") ? 0 : 1;
+    const d = addDays(monday, 7 * wk + QWD.indexOf(m[2]));
+    dates.push([m.index, m.index + m[0].length, d >= today ? d : null]);
+  }
+  if (!dates.length) {
+    const m = /([^가-힣])([월화수목금토일])요일/.exec(s);
+    if (m) {
+      const ahead = (QWD.indexOf(m[2]) - wday(parseD(today)) + 7) % 7;
+      if (ahead === 0) return null;   // 오늘과 같은 요일이면 이번 주인지 다음 주인지 애매
+      dates.push([m.index + 1, m.index + m[0].length, addDays(today, ahead)]);
+    }
+  }
+  if (dates.length !== 1 || !dates[0][2]) return null;
+  const [a, b, day] = dates[0];
+  let rest = s.slice(0, a) + " " + s.slice(b);
+  // 날짜 바로 뒤의 요일 표시('11/20 금', '11/20(금)')는 맞는지 확인만
+  const mw = /^\s*\(?([월화수목금토일])(?:요일)?\)?(?![가-힣])/.exec(s.slice(b));
+  if (mw && !/^(이번|다음|담주|다다음)/.test(s.slice(a, b))) {
+    if (QWD.indexOf(mw[1]) !== wday(parseD(day))) return null;   // 날짜와 요일이 안 맞으면 Claude가 확인
+    rest = s.slice(0, a) + " " + s.slice(b + mw[0].length);
+  }
+  if (/\D\d{1,2}\s*일(?!정)/.test(rest)) return null;   // '20일' 같은 다른 날짜가 또 있음
+
+  // 시간: '3시', '3시 반', '오후 3시 20분', '15:00', '3~5시', '3시~4시반'
+  const times = [];   // [시작, 끝, 오전/오후, 시, 분, 숫자만 있음]
+  const tre = /(오전|오후|아침|점심|저녁|밤|낮|새벽)?\s*(?:(\d{1,2}):(\d{2})|(\d{1,2})\s*시\s*(?:(반)|(\d{1,2})\s*분)?|(\d{1,2})(?=\s*[~\-]))/g;
+  for (const m of rest.matchAll(tre)) {
+    const h = +(m[2] || m[4] || m[7]), mi = +(m[3] || (m[5] ? 30 : (m[6] || 0)));
+    let pfx = m[1] || null;
+    if (!pfx && m[2] && m[2].length === 2 && h < 12) pfx = "오전";   // '09:30'처럼 두 자리로 쓴 24시간제
+    times.push([m.index, m.index + m[0].length, pfx, h, mi, !!m[7]]);
+  }
+  let start = null, end = null;
+  if (times.length === 1) {
+    start = times[0][5] ? null : qHour(times[0][2], times[0][3], times[0][4]);
+    if (!start) return null;
+  } else if (times.length === 2 && !times[1][5] && /^\s*[~\-]\s*$/.test(rest.slice(times[0][1], times[1][0]))) {
+    start = qHour(times[0][2] || times[1][2], times[0][3], times[0][4]);
+    if (!start) return null;
+    let eh = times[1][3];
+    const emi = times[1][4];
+    if (times[1][2]) end = qHour(times[1][2], eh, emi);
+    else {
+      if (start[0] >= 12 && eh < 12) eh += 12;
+      end = eh < 24 ? [eh, emi] : null;
+    }
+    if (!end || cmp(end, start) <= 0) return null;
+  } else if (times.length) return null;
+  for (const tm of [...times].reverse()) rest = rest.slice(0, tm[0]) + " " + rest.slice(tm[1]);
+  if (/\d\s*(시|분|일|월|:|\/|~)/.test(rest)) return null;   // 남은 시간·날짜 조각이 있으면 애매
+  let title = rest.replace(/(^|\s)(에는|에|은|는|날|쯤|경|[~\-])(?=\s|$)/g, "$1 ");
+  title = title.replace(/\s+/g, " ").trim().replace(/^[ .·]+|[ .·]+$/g, "");
+  if (!/[가-힣A-Za-z]/.test(title)) return null;
+  return {op: "add", title, date: day, time: start ? hhmm(start) : null, end_time: end ? hhmm(end) : null,
+          end_date: null, location: "", note: "", rrule: null, remind: null};
+}

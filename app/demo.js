@@ -16,6 +16,8 @@ for (const ev of [
   timed("d2", "조합론 시험", D(0), "15:00", "17:00", {location: "공학관 302호"}),
   allday("d3", "PAE 에세이 마감", D(1)),
   timed("d4", "동기 모임", D(2), "19:00", "22:00", {location: "강남역", description: "회비 2만 원"}),
+  timed("d5", "과제 1 제출", D(-2), "18:00", "19:00"),   // 지난 일정·안 끝냄 → 목록 맨 위에 그대로
+  timed("d6", "도서관 책 연장", D(-3), "09:00", "10:00", {extendedProperties: {private: {claudecalDone: "1"}}}),   // 지난 일정·완료 → 안 보임
 ]) events.set(ev.id, ev);
 events.set("rm", {id: "rm", summary: "수업", status: "confirmed", recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU,TH"],
                   start: {dateTime: `${D(-14)}T13:00:00`}, end: {dateTime: `${D(-14)}T14:30:00`}, reminders: {useDefault: true}});
