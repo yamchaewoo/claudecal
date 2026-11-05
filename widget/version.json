@@ -1,0 +1,16 @@
+{
+ "version": "2026.11.05.1",
+ "notes": "끌어서 옮기기, 지난 일정 표시, 자동 업데이트",
+ "files": {
+  "claude_cal.pyw": "6b879262740976e7d73f780ddb654443578ab6ef1af2752d6491f945e9428bdc",
+  "app_api.py": "5158cbc6a51a2361ae0d9352603b6e58f479e58636ef3f963073b36afa6404a2",
+  "calcore.py": "1d7d452130cc01253fbe3880037cec84208ae9a079d3e80f9a22559be4f08bf1",
+  "stores.py": "afff34cc774f94ec0fa15138d3a531e513b728f89917ca1068247843f24f55fd",
+  "updater.py": "9c9ec4f7812ad6c959dc6a1f96d2f85ccb02fc224b0e6097db8f8db3a9bf1ddf",
+  "ui/index.html": "a12601f311128e36e294ce01b5829dd5293622009078926cb01bfd3f170666e4",
+  "requirements.txt": "95d785dc259213ecf7c0e1d57aa54fb13bbbefcbedadab8cf8fbd6e7538d15f1",
+  "README.md": "9ddf6952385ef89398451c0c7e29b2dd0315e4fb75ffa232fe5da84efc538be6",
+  "install.py": "275f274f25a4f7f456b62b4b0e9b22a1357612f2c237e3720191ab517d3b3bdf",
+  "install.bat": "92c7eafe3e6c5889542325d469e8259095886972f40b18f50b455e2ad56b933e"
+ }
+}
