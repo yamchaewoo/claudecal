@@ -221,8 +221,11 @@ async function listTasks() {
   const done = all.filter(t => t.state === "done").sort((a, b) => (a.done_at < b.done_at ? 1 : -1)).slice(0, 50);
   return [...active, ...done];
 }
-async function tAdd(title) {
-  const t = await google("POST", "tasks", {api: "tasks", body: {title}});   // 맨 위에 들어간다
+async function tAdd(title, notes = "", done = false) {
+  const body = {title};
+  if (notes) body.notes = notes;
+  if (done) body.status = "completed";
+  const t = await google("POST", "tasks", {api: "tasks", body});   // 맨 위에 들어간다
   return [{t: "task_delete", id: t.id}];
 }
 async function tSet(id, state) {
@@ -325,16 +328,35 @@ async function makePlan(data, sidMap) {
   return {plan, query};
 }
 
-async function executePlan(plan) {   // 실패하면 그때까지 한 것을 되돌리고 오류
+async function doAll(steps) {   // 차례로 하다가 실패하면 그때까지 한 것을 되돌리고 오류
   const batch = [];
   try {
-    for (const p of plan)
-      batch.push(p.op === "add" ? await gAdd(p.spec) : p.op === "update" ? await gUpdate(p.id, p.spec, p.scope) : await gDelete(p.id, p.scope));
+    for (const step of steps) batch.push(await step());
   } catch (e) {
     try { for (const rec of [...batch].reverse()) await gUndo(rec); } catch { /* 되돌리기도 실패하면 원래 오류를 보여 준다 */ }
     throw e;
   }
   return batch;
+}
+const executePlan = plan => doAll(plan.map(p => () =>
+  p.op === "add" ? gAdd(p.spec) : p.op === "update" ? gUpdate(p.id, p.spec, p.scope) : gDelete(p.id, p.scope)));
+
+// 꾹 눌러 옮기기 — 위젯의 move_event / event_to_task / task_to_event와 같은 규칙
+async function gMove(id, shift) {   // shift일만큼 옮긴다. 시간·길이는 그대로, 반복 일정은 이 회차만
+  const u = C.fromGoogle(await google("GET", evPath(id)));
+  const spec = C.normalize({...u, rrule: null, date: C.addDays(u.date, shift), end_date: C.addDays(u.end_date, shift)});
+  return gUpdate(id, spec, "one");
+}
+function eventToTask(ev) {   // 장소·메모는 할 일 메모로, 완료 체크도 그대로. 일정은 지운다
+  const notes = [ev.location && "📍 " + ev.location, ev.note].filter(Boolean).join("\n");
+  return doAll([() => tAdd(ev.title, notes, ev.done), () => gDelete(ev.id, "one")]);
+}
+function taskToEvent(t, spec) {   // 할 일 → 그날 종일 일정 (메모는 일정 메모로). 할 일 목록에서는 빠진다
+  let id = null;
+  const steps = [async () => { const rec = await gAdd(spec); id = rec[0].id; return rec; }];
+  if (t.state === "done") steps.push(() => gSetDone(id, true));
+  steps.push(() => tDelete(t.id));
+  return doAll(steps);
 }
 
 // ---------------- 입력 ----------------
@@ -579,7 +601,7 @@ function renderTasks() {
       (S.tasksNeedScope ? `<button class="btn primary wide" id="tkScope">구글 다시 연결 (할 일 권한 추가)</button>
         <div class="hint" style="margin-top:8px">"확인되지 않은 앱" → 고급 → ClaudeCal(으)로 이동, 그리고 <b>할 일 권한에 체크</b>해 주세요.</div>` : "") + `</div>`;
   if (!S.tasks.length)
-    return `<div class="empty"><p>날짜 없이 언젠가 해야 할 일을 아래 칸에 적어 두세요.</p><p class="hint">☐ 체크 = 완료 · 누르면 수정 (이름·메모·삭제)</p></div>`;
+    return `<div class="empty"><p>날짜 없이 언젠가 해야 할 일을 아래 칸에 적어 두세요.</p><p class="hint">☐ 체크 = 완료 · 누르면 수정 (이름·메모·삭제) · 꾹 누르면 날짜에 옮겨 일정으로</p></div>`;
   const active = S.tasks.filter(t => t.state !== "done"), done = S.tasks.filter(t => t.state === "done");
   return `<div class="dayh">할 일 <span class="rel">${active.length || ""}</span></div>` + active.map(taskRow).join("") +
     (done.length ? `<div class="dayh tk-sec">완료 ${done.length}<button class="link" id="tkClear">모두 지우기</button></div>` + done.map(taskRow).join("") : "");
@@ -681,9 +703,10 @@ function render() {
     for (const d of [...byDay.keys()].sort()) {
       const diff = C.dayDiff(d, td), rel = {"-1": "어제 · 안 끝냄", 0: "오늘", 1: "내일", 2: "모레"}[diff] || (diff < 0 ? "지남 · 안 끝냄" : "");
       const evs = byDay.get(d), dd = C.parseD(d);
-      h += `<div class="dayh ${diff === 0 ? "today" : ""} ${diff < 0 ? "past" : ""} ${C.wday(dd) === 6 ? "sun" : C.wday(dd) === 5 ? "sat" : ""}">${C.dlabel(d)}` +
+      h += `<div class="lday" data-dday="${d}">` +   // 하루 묶음 = 꾹 눌러 끈 일정을 놓는 자리
+        `<div class="dayh ${diff === 0 ? "today" : ""} ${diff < 0 ? "past" : ""} ${C.wday(dd) === 6 ? "sun" : C.wday(dd) === 5 ? "sat" : ""}">${C.dlabel(d)}` +
         `${rel ? ` <span class="rel">${rel}</span>` : ""}</div>` +
-        (evs.length ? evs.map(evRow).join("") : `<div class="noev">일정 없음</div>`);
+        (evs.length ? evs.map(evRow).join("") : `<div class="noev">일정 없음</div>`) + `</div>`;
     }
     $("#list").innerHTML = h;
   }
@@ -779,6 +802,240 @@ async function deleteFromSheet(scope) {
     setStatus(`삭제했어요: ${ev.title}` + (scope === "all" ? " (반복 전체)" : ""), "ok", true);
     await refresh();
   } catch (e) { handleErr(e); } finally { S.busy = false; }
+}
+
+// ---------------- 꾹 눌러 옮기기 ----------------
+// 일정·할 일을 꾹 누르면 잡히고 아래에 날짜 띠가 뜬다. 끌어서 놓거나, 손을 떼고 날짜를 눌러도 된다. 다른 곳 = 취소.
+// 일정 → 목록의 다른 날 / 띠의 날짜 (시간·길이 그대로, 반복이면 이 회차만) · [할 일로] (날짜 없는 할 일)
+// 할 일 → 띠의 날짜 (그날 종일 일정) · ◀ ▶ 위에 머무르면(또는 누르면) 한 주씩 넘긴다
+const PRESS_MS = 380;
+const DRAG = {press: null, mouse: null, on: false, pick: false, moved: false, src: null, tgt: null, x: 0, y: 0, sx: 0, sy: 0,
+              week: null, flip: null, scroller: null, eatUntil: 0, touchAt: 0};
+function dragSource(target) {
+  if (S.busy || !target?.closest || target.closest("button, a, input, textarea")) return null;
+  const evEl = target.closest("#list [data-id]");
+  if (evEl) {
+    const ev = S.events.find(x => x.id === evEl.dataset.id);
+    return ev ? {kind: "ev", ev, title: ev.title, from: evEl.closest("[data-dday]")?.dataset.dday || ev.date} : null;
+  }
+  const tkEl = target.closest("#list [data-tid]");
+  if (tkEl) {
+    const t = S.tasks.find(x => x.id === tkEl.dataset.tid);
+    return t ? {kind: "task", task: t, title: t.title} : null;
+  }
+  return null;
+}
+function dropTarget(x, y) {
+  const el = document.elementFromPoint(x, y), s = DRAG.src;
+  if (!el || !s) return null;
+  const nav = el.closest("[data-dnav]");
+  if (nav) { const dir = +nav.dataset.dnav; return {el: nav, kind: "nav", dir, label: dir < 0 ? "◀ 앞 주로 넘기는 중" : "다음 주로 넘기는 중 ▶"}; }
+  const tk = el.closest("[data-dtask]");
+  if (tk) {
+    if (s.kind !== "ev") return null;
+    return s.ev.recurring ? {el: tk, kind: "none", label: "반복 일정은 할 일로 못 옮겨요"} : {el: tk, kind: "tasks", label: "→ 날짜 없는 할 일로"};
+  }
+  const d = el.closest("#dropbar [data-dday], #list [data-dday]");
+  if (!d) return null;
+  const date = d.dataset.dday;
+  if (s.kind === "ev") {   // 띠의 날짜 = 그날 시작, 목록의 하루 묶음 = 잡은 날에서 놓은 날만큼 (여러 날 일정은 통째로)
+    const shift = C.dayDiff(date, d.closest("#dropbar") ? s.ev.date : s.from);
+    return {el: d, kind: "move", shift, label: shift ? `→ ${C.dlabel(C.addDays(s.ev.date, shift))} ${s.ev.time || "종일"}` : "제자리 (안 옮겨요)"};
+  }
+  return {el: d, kind: "task", date, label: `→ ${C.dlabel(date)} 종일 일정으로`};
+}
+function markSrc(on) {
+  const s = DRAG.src;
+  if (!s) return;
+  const sel = s.kind === "ev" ? `#list [data-id="${CSS.escape(s.ev.id)}"]` : `#list [data-tid="${CSS.escape(s.task.id)}"]`;
+  document.querySelectorAll(sel).forEach(el => el.classList.toggle("drag-src", on));
+}
+function paintBar() {   // 날짜 띠: DRAG.week부터 7일
+  const s = DRAG.src, td = C.isoD(new Date()), cur = s.kind === "ev" ? s.ev.date : null;
+  $("#dbTask").hidden = s.kind !== "ev";
+  $("#dbDays").innerHTML = Array.from({length: 7}, (_, i) => {
+    const d = C.addDays(DRAG.week, i), dd = C.parseD(d), wd = C.wday(dd), md = i === 0 || dd.getDate() === 1;
+    return `<div class="db-d ${d === td ? "today" : ""} ${d === cur ? "src" : ""} ${wd === 6 ? "sun" : wd === 5 ? "sat" : ""}" data-dday="${d}">` +
+      `<small>${d === td ? "오늘" : C.WD[wd]}</small><b class="${md ? "m" : ""}">${md ? `${dd.getMonth() + 1}/${dd.getDate()}` : dd.getDate()}</b></div>`;
+  }).join("");
+  $("#dbRange").textContent = `${C.dlabel(DRAG.week)} ~ ${C.dlabel(C.addDays(DRAG.week, 6))}`;
+}
+function paintDrag() {
+  const s = DRAG.src, t = DRAG.tgt, g = $("#ghost");
+  $("#dbLabel").textContent = t ? t.label : DRAG.pick ? "옮길 날짜를 누르세요 · 다른 곳을 누르면 취소"
+    : s.kind === "ev" ? "날짜에 놓으면 옮겨요 · 딴 데 놓으면 취소" : "날짜에 놓으면 그날 일정으로 · 딴 데 놓으면 취소";
+  $("#dbLabel").classList.toggle("no", t?.kind === "none");
+  g.hidden = DRAG.pick;
+  if (DRAG.pick) return;
+  g.innerHTML = `<div class="g-t">${esc(s.title)}</div>${t ? `<div class="g-w">${esc(t.label)}</div>` : ""}`;
+  g.classList.toggle("no", t?.kind === "none");
+  const w = g.offsetWidth, h = g.offsetHeight;   // 손가락에 가리지 않게 위쪽에
+  g.style.left = Math.max(6, Math.min(DRAG.x - w / 2, innerWidth - w - 6)) + "px";
+  g.style.top = (DRAG.y - h - 34 > 6 ? DRAG.y - h - 34 : DRAG.y + 34) + "px";
+}
+function setTarget(t) {
+  const old = DRAG.tgt;
+  if (old?.el !== t?.el) {
+    old?.el.classList.remove("drop-on", "drop-no");
+    t?.el.classList.add(t.kind === "none" ? "drop-no" : "drop-on");
+    if (t?.kind === "nav" && !DRAG.pick) startFlip(t.dir); else stopFlip();
+  }
+  DRAG.tgt = t;
+  paintDrag();
+}
+const updateDrag = () => setTarget(dropTarget(DRAG.x, DRAG.y));
+function flipWeek(dir) { DRAG.week = C.addDays(DRAG.week, 7 * dir); paintBar(); }
+function stopFlip() { clearTimeout(DRAG.flip); DRAG.flip = null; }
+function startFlip(dir) {   // ◀ ▶ 위에 머무르면 0.45초 뒤부터 0.7초마다 한 주씩
+  stopFlip();
+  const step = wait => DRAG.flip = setTimeout(() => {
+    if (!DRAG.on || DRAG.pick) return;
+    flipWeek(dir);
+    step(700);
+  }, wait);
+  step(450);
+}
+function dragScroll() {   // 목록 위·아래 끝으로 가져가면 저절로 굴린다 (잡은 동안 16ms마다)
+  if (!DRAG.on || DRAG.pick) return;
+  const m = $("main"), r = m.getBoundingClientRect(), bottom = Math.min(r.bottom, $("#dropbar").getBoundingClientRect().top);
+  const dy = DRAG.y < r.top + 48 ? -9 : DRAG.y > bottom - 48 && DRAG.y < bottom ? 9 : 0;
+  if (!dy) return;
+  const before = m.scrollTop;
+  m.scrollTop += dy;
+  if (m.scrollTop !== before) updateDrag();
+}
+function clearPress() { if (DRAG.press) { clearTimeout(DRAG.press.timer); DRAG.press = null; } }
+function beginDrag(src, x, y) {
+  Object.assign(DRAG, {src, on: true, pick: false, moved: false, tgt: null, x, y, sx: x, sy: y, week: C.isoD(new Date())});
+  document.activeElement?.blur?.();   // 키보드가 떠 있으면 내린다
+  try { if (navigator.userActivation?.hasBeenActive ?? true) navigator.vibrate?.(12); } catch { /* 진동 없는 기기 */ }   // 잡혔다는 짧은 진동
+  document.body.classList.add("dragging");
+  markSrc(true);
+  paintBar();
+  $("#dropbar").hidden = false;
+  updateDrag();
+  clearInterval(DRAG.scroller);
+  DRAG.scroller = setInterval(dragScroll, 16);
+}
+function enterPick() {   // 꾹 누르고 그냥 뗐으면: 띠를 띄워 둔 채 날짜를 누르게
+  DRAG.pick = true;
+  setTarget(null);
+}
+function endDrag(drop) {
+  const s = DRAG.src, t = DRAG.tgt;
+  stopFlip();
+  clearPress();
+  clearInterval(DRAG.scroller);
+  markSrc(false);
+  t?.el.classList.remove("drop-on", "drop-no");
+  Object.assign(DRAG, {on: false, pick: false, src: null, tgt: null, mouse: null});
+  document.body.classList.remove("dragging");
+  $("#dropbar").hidden = $("#ghost").hidden = true;
+  if (drop && s && t) dropIt(s, t);
+}
+
+async function dropIt(s, t) {   // 화면은 바로 바꾸고, 저장한 뒤 다시 불러온다 (실패하면 오류를 보이고 원래대로)
+  const move = s.kind === "ev" && t.kind === "move" && t.shift, toTask = s.kind === "ev" && t.kind === "tasks",
+        toEvent = s.kind === "task" && t.kind === "task";
+  if (!(move || toTask || toEvent)) return;
+  if (S.busy) return setStatus("하던 걸 끝내는 중이에요. 잠깐 뒤에 다시 해 주세요.", "warn");
+  S.busy = true;
+  try {
+    if (move) {
+      const ev = s.ev;
+      Object.assign(ev, {date: C.addDays(ev.date, t.shift), end_date: C.addDays(ev.end_date, t.shift)});
+      S.events.sort((a, b) => C.sortKey(a) < C.sortKey(b) ? -1 : 1);
+      render();
+      setBusy("옮기는 중");
+      const rec = await gMove(ev.id, t.shift);
+      S.undo.push({desc: "옮기기: " + ev.title, batch: [rec]});
+      setStatus(`옮겼어요: ${C.dlabel(ev.date)} ${ev.time || "종일"} ${ev.title}` + (ev.recurring ? " (반복 중 이 회차만)" : ""), "ok");
+    } else if (toTask) {
+      const ev = s.ev;
+      S.events = S.events.filter(x => x.id !== ev.id);
+      render();
+      setBusy("할 일로 옮기는 중");
+      S.undo.push({desc: "할 일로: " + ev.title, batch: await eventToTask(ev)});
+      S.tasksAt = 0;   // 할 일 탭을 열면 새로 불러오게
+      setStatus("할 일로 옮겼어요: " + ev.title, "ok");
+    } else {
+      const tk = s.task, spec = C.normalize({title: tk.title, date: t.date, note: tk.notes || ""});
+      S.tasks = S.tasks.filter(x => x.id !== tk.id);
+      render();
+      setBusy("일정으로 옮기는 중");
+      S.undo.push({desc: "일정으로: " + tk.title, batch: await taskToEvent(tk, spec)});
+      S.loadedAt = 0;   // 일정 탭을 열면 새로 불러오게
+      setStatus("일정으로 옮겼어요: " + C.describe(spec), "ok");
+    }
+  } catch (e) { handleErr(e); } finally { S.busy = false; }
+  await refresh();
+}
+
+function bindDrag() {
+  const list = $("#list");
+  // 손가락: 꾹(0.38초) 누르면 잡힌다. 그 전에 움직이면 그냥 굴리기
+  document.addEventListener("touchstart", e => {
+    DRAG.touchAt = Date.now();
+    if (e.touches.length > 1) { clearPress(); if (DRAG.on && !DRAG.pick) endDrag(false); return; }
+    if (DRAG.on) return;   // 날짜를 고르는 중엔 보통처럼 누르고 굴린다
+    const src = list.contains(e.target) && dragSource(e.target);
+    if (!src) return;
+    const p = e.touches[0], x = p.clientX, y = p.clientY;
+    clearPress();
+    DRAG.press = {x, y, timer: setTimeout(() => { DRAG.press = null; beginDrag(src, x, y); }, PRESS_MS)};
+  }, {passive: true});
+  document.addEventListener("touchmove", e => {
+    const p = e.touches[0];
+    if (!p) return;
+    if (DRAG.press) { if (Math.hypot(p.clientX - DRAG.press.x, p.clientY - DRAG.press.y) > 10) clearPress(); return; }
+    if (!DRAG.on || DRAG.pick) return;
+    e.preventDefault();   // 잡은 동안은 화면이 굴러가지 않게
+    DRAG.x = p.clientX; DRAG.y = p.clientY;
+    if (Math.hypot(DRAG.x - DRAG.sx, DRAG.y - DRAG.sy) > 10) DRAG.moved = true;
+    updateDrag();
+  }, {passive: false});
+  document.addEventListener("touchend", e => {
+    clearPress();
+    if (!DRAG.on || DRAG.pick) return;
+    e.preventDefault();   // 뗀 자리가 눌리지 않게
+    DRAG.eatUntil = Date.now() + 400;
+    if (DRAG.moved) endDrag(true); else enterPick();
+  }, {passive: false});
+  document.addEventListener("touchcancel", () => { clearPress(); if (DRAG.on && !DRAG.pick) endDrag(false); });
+  $("main").addEventListener("scroll", () => { if (DRAG.press) clearPress(); }, {passive: true});
+  // 마우스(컴퓨터 브라우저): 누른 채 살짝 끌면 바로 잡힌다
+  document.addEventListener("mousedown", e => {
+    if (Date.now() - DRAG.touchAt < 1500 || e.button !== 0 || DRAG.on) return;
+    const src = list.contains(e.target) && dragSource(e.target);
+    DRAG.mouse = src ? {x: e.clientX, y: e.clientY, src} : null;
+  });
+  document.addEventListener("mousemove", e => {
+    const m = DRAG.mouse;
+    if (!m) return;
+    if (!(e.buttons & 1)) { DRAG.mouse = null; if (DRAG.on && !DRAG.pick) endDrag(false); return; }
+    if (DRAG.on) { DRAG.x = e.clientX; DRAG.y = e.clientY; DRAG.moved = true; return updateDrag(); }
+    if (Math.hypot(e.clientX - m.x, e.clientY - m.y) >= 6) { beginDrag(m.src, m.x, m.y); DRAG.mouse = m; DRAG.x = e.clientX; DRAG.y = e.clientY; DRAG.moved = true; updateDrag(); }
+  });
+  document.addEventListener("mouseup", () => {
+    if (!DRAG.mouse) return;
+    DRAG.mouse = null;
+    if (DRAG.on && !DRAG.pick) { DRAG.eatUntil = Date.now() + 400; endDrag(true); }
+  });
+  // 놓은 뒤 따라오는 클릭은 먹고, 날짜를 고르는 중이면 누른 곳으로 옮긴다
+  document.addEventListener("click", e => {
+    if (Date.now() < DRAG.eatUntil) { e.preventDefault(); e.stopPropagation(); return; }
+    if (!DRAG.pick) return;
+    e.preventDefault(); e.stopPropagation();
+    const t = dropTarget(e.clientX, e.clientY);
+    if (t?.kind === "nav") return flipWeek(t.dir);
+    if (t?.kind === "none") return setTarget(t);   // '반복 일정은 못 옮겨요'를 보여 주고 계속 고르게
+    if (!t && e.target.closest?.("#dropbar")) return;   // 띠의 빈 곳은 무시
+    DRAG.tgt = t;
+    endDrag(true);
+  }, true);
+  document.addEventListener("contextmenu", e => { if (DRAG.on || DRAG.press || e.target.closest?.("#list [data-id], #list [data-tid]")) e.preventDefault(); });
+  document.addEventListener("keydown", e => { if (DRAG.on && e.key === "Escape") { e.preventDefault(); endDrag(false); } }, true);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible" && DRAG.on) endDrag(false); });
 }
 
 // ---------------- 설정 ----------------
@@ -928,6 +1185,7 @@ function bind() {
     const row = e.target.closest("[data-id]");
     if (row) openSheet(row.dataset.id);
   });
+  bindDrag();
   window.visualViewport?.addEventListener("resize", fitViewport);
   window.visualViewport?.addEventListener("scroll", fitViewport);
   window.addEventListener("pageshow", fitViewport);
