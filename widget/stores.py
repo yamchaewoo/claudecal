@@ -495,9 +495,9 @@ class GoogleStore:
         if not self.can_set_remind:
             raise NeedCalListScope("기본 알림을 바꾸려면 구글 권한을 하나 더 받아야 해요. 구글을 다시 연결해 주세요.")
         cl = self.svc.calendarList()
-        cur = cl.get(calendarId="primary").execute().get("defaultReminders") or []
-        keep = [r for r in cur if r.get("method") != "popup"]
-        cl.patch(calendarId="primary", body={"defaultReminders": keep + ([] if minutes < 0 else [{"method": "popup", "minutes": int(minutes)}])}).execute()
+        entry = cl.get(calendarId="primary").execute()   # 읽기는 'primary'로 되지만 바꾸기는 진짜 id(계정 메일)여야 한다
+        keep = [r for r in entry.get("defaultReminders") or [] if r.get("method") != "popup"]
+        cl.patch(calendarId=entry["id"], body={"defaultReminders": keep + ([] if minutes < 0 else [{"method": "popup", "minutes": int(minutes)}])}).execute()
         self.default_remind = int(minutes)
         core.save_json(os.path.join(self.app_dir, "google.json"), {"email": self.email, "default_remind": self.default_remind})
 

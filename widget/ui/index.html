@@ -1094,7 +1094,7 @@ function bind() {
     fillSettings();
     if (r.ok) { render(); setStatus(S.st.remind_google ? "기본 알림을 바꿨어요. 휴대폰(구글 캘린더 앱)도 같이 바뀌어요." : "기본 알림을 바꿨어요.", "ok"); }
     else if (r.need_callist_scope) { $("#sRemindHint").textContent = r.error; $("#sRemindFix").hidden = false; }
-    else setStatus(r.error, "err");
+    else { $("#sRemindHint").textContent = "바꾸지 못했어요: " + r.error; setStatus(r.error, "err"); }   // 안내 칸에도 남겨서 놓치지 않게
   };
   $("#sRemindFix").onclick = () => { $("#sRemindHint").textContent = "브라우저에서 구글 로그인을 끝내 주세요… (5분 안에)"; $("#sGConnect").onclick(); };
   $("#sOnTop").onchange = e => saveSetting("on_top", e.target.checked);

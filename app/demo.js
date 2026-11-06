@@ -70,8 +70,9 @@ export async function fakeGoogle(method, path, {query, body, api} = {}) {
   await wait(250);
   if (api === "tasks") return fakeTasks(method, path, body);
   if (api === "callist") {
+    if (method === "PATCH" && path !== encodeURIComponent("demo@example.com")) throw Object.assign(new Error("구글 오류(400) Invalid resource id value."), {status: 400});   // 진짜 구글처럼
     if (method === "PATCH") defaultReminders = JSON.parse(JSON.stringify(body.defaultReminders));
-    return {id: "primary", defaultReminders: JSON.parse(JSON.stringify(defaultReminders))};
+    return {id: "demo@example.com", defaultReminders: JSON.parse(JSON.stringify(defaultReminders))};
   }
   const id = decodeURIComponent(path.split("/")[1] || "");
   if (method === "GET" && path === "events") {

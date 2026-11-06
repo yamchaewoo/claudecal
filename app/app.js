@@ -211,9 +211,9 @@ async function gUndo(records) {
 }
 
 async function setDefaultRemind(minutes) {   // 구글 캘린더 기본 알림 바꾸기 (PC 위젯·구글 캘린더 앱도 같이). 메일 알림은 그대로
-  const cur = (await google("GET", "primary", {api: "callist"})).defaultReminders || [];
-  const body = {defaultReminders: [...cur.filter(r => r.method !== "popup"), ...(minutes < 0 ? [] : [{method: "popup", minutes}])]};
-  await google("PATCH", "primary", {api: "callist", body});
+  const entry = await google("GET", "primary", {api: "callist"});   // 읽기는 'primary'로 되지만 바꾸기는 진짜 id(계정 메일)여야 한다
+  const body = {defaultReminders: [...(entry.defaultReminders || []).filter(r => r.method !== "popup"), ...(minutes < 0 ? [] : [{method: "popup", minutes}])]};
+  await google("PATCH", encodeURIComponent(entry.id || "primary"), {api: "callist", body});
   S.gRemind = minutes;
   store.set("gRemind", minutes);
 }
