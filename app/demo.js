@@ -13,9 +13,10 @@ const events = new Map();
 let seq = 1;
 for (const ev of [
   timed("d1", "스터디", D(0), "10:00", "12:00"),
-  timed("d2", "조합론 시험", D(0), "15:00", "17:00", {location: "공학관 302호"}),
+  timed("d2", "조합론 시험", D(0), "15:00", "17:00", {location: "공학관 302호", colorId: "11"}),   // 구글에서 고른 색: 토마토
   allday("d3", "PAE 에세이 마감", D(1)),
-  timed("d4", "동기 모임", D(2), "19:00", "22:00", {location: "강남역", description: "회비 2만 원"}),
+  timed("d4", "동기 모임", D(2), "19:00", "22:00", {location: "강남역", description: "회비 2만 원", colorId: "7"}),   // 공작
+  allday("ra_1", "공동테스트 결과 전송", D(1), {recurringEventId: "ra"}),   // 반복 종일 → 반복색
   timed("d5", "과제 1 제출", D(-2), "18:00", "19:00"),   // 지난 일정·안 끝냄 → 목록 맨 위에 그대로
   timed("d6", "도서관 책 연장", D(-3), "09:00", "10:00", {extendedProperties: {private: {claudecalDone: "1"}}}),   // 지난 일정·완료 → 안 보임
 ]) events.set(ev.id, ev);

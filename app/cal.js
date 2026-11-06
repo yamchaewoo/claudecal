@@ -176,10 +176,14 @@ export function parseResponse(text) {
 }
 
 // ---------- 구글 이벤트 ↔ 일정 ----------
+// 구글 캘린더에서 일정마다 고르는 색 (colorId → 구글 캘린더 화면에 보이는 색). 안 골랐으면 null = 앱 기본색
+export const GOOGLE_COLORS = {1: "#7986cb", 2: "#33b679", 3: "#8e24aa", 4: "#e67c73", 5: "#f6bf26", 6: "#f4511e",
+                              7: "#039be5", 8: "#616161", 9: "#3f51b5", 10: "#0b8043", 11: "#d50000"};
 export function fromGoogle(ev) {
   const s = ev.start || {}, e = ev.end || {};
   const out = {id: ev.id, series_id: ev.recurringEventId || null, title: ev.summary || "(제목 없음)",
                location: ev.location || "", note: ev.description || "", link: ev.htmlLink || "",
+               color: GOOGLE_COLORS[ev.colorId] || null,
                recurring: !!(ev.recurringEventId || ev.recurrence), time: null, end_time: null,
                done: ev.extendedProperties?.private?.[DONE_KEY] === "1"};
   if (s.dateTime) {

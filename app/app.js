@@ -649,11 +649,11 @@ function remindText(r) {
 }
 function evRow(ev) {
   const past = isPast(ev);
-  const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", ev.done ? "done" : ""].join(" ");
+  const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", ev.done ? "done" : "", ev.color ? "cc" : ""].join(" ");
   const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !C.isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "📌";
   const meta = [ev.location && "📍 " + ev.location, ev.end_date !== ev.date && `~${C.dlabel(ev.end_date)}`, ev.recurring && "🔁 반복", remindText(ev.remind)]
     .filter(Boolean).join(" · ");
-  return `<div class="${cls}" data-id="${esc(ev.id)}">
+  return `<div class="${cls}" data-id="${esc(ev.id)}"${ev.color ? ` style="--c:${ev.color}"` : ""}>
     <button class="ck" data-done="${esc(ev.id)}" role="checkbox" aria-checked="${!!ev.done}" aria-label="완료"></button>
     <div class="bar"></div><div class="tm">${tm}</div>
     <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>

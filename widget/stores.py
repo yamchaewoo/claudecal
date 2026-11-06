@@ -312,11 +312,17 @@ def to_google(spec, tz_name, patch=False, recurrence=True):
     return body
 
 
+# 구글 캘린더에서 일정마다 고르는 색 (colorId → 구글 캘린더 화면에 보이는 색). 안 골랐으면 None = 위젯 기본색
+GOOGLE_COLORS = {"1": "#7986cb", "2": "#33b679", "3": "#8e24aa", "4": "#e67c73", "5": "#f6bf26", "6": "#f4511e",
+                 "7": "#039be5", "8": "#616161", "9": "#3f51b5", "10": "#0b8043", "11": "#d50000"}
+
+
 def from_google(ev, tz):
     s, e = ev.get("start", {}), ev.get("end", {})
     out = {"id": ev["id"], "series_id": ev.get("recurringEventId"), "title": ev.get("summary") or "(제목 없음)",
            "location": ev.get("location", ""), "note": ev.get("description", ""), "link": ev.get("htmlLink", ""),
            "recurring": bool(ev.get("recurringEventId") or ev.get("recurrence")), "source": "google",
+           "color": GOOGLE_COLORS.get(str(ev.get("colorId") or "")),
            "time": None, "end_time": None,
            "done": ((ev.get("extendedProperties") or {}).get("private") or {}).get(DONE_KEY) == "1"}
     if "dateTime" in s:

@@ -116,7 +116,8 @@ footer span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ev{display:flex;gap:10px;align-items:stretch;padding:7px 8px;border-radius:8px;cursor:pointer;position:relative}
 .ev:hover{background:var(--bg2)}
 .ev .bar{width:3px;border-radius:3px;background:var(--accent);flex:none}
-.ev.rep .bar{background:var(--rep)}.ev.allday .bar{background:var(--allday)}
+.ev.allday .bar{background:var(--allday)}.ev.rep .bar{background:var(--rep)}
+.ev.cc .bar{background:var(--c)}   /* 구글 캘린더에서 고른 색 */
 .ev .tm{width:44px;flex:none;color:var(--fg2);font-variant-numeric:tabular-nums;font-size:12.5px}
 .ev .tm small{display:block;color:var(--dim2);font-size:11px}
 .ev.allday .tm{color:var(--allday)}
@@ -167,12 +168,14 @@ footer span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   overflow:hidden;font-size:11.5px;line-height:1.3;cursor:pointer;color:var(--fg)}
 .blk:hover{filter:brightness(1.25);z-index:3}
 .blk.rep{background:var(--rep-soft);border-left-color:var(--rep)}
+.blk.cc{background:color-mix(in srgb,var(--c) 24%,transparent);border-left-color:var(--c)}
 .blk small{display:block;color:var(--fg2);font-size:10.5px}
 .blk.pt{height:17px;padding:0 5px;line-height:17px;white-space:nowrap;text-overflow:ellipsis}   /* 시작 시각만 있는 일정 = 얇은 한 줄 */
 .nowline{position:absolute;left:0;right:0;height:2px;background:var(--accent);z-index:4;pointer-events:none}
 .nowline::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:8px;background:var(--accent)}
 .chip{font-size:11px;line-height:1.35;padding:1px 5px;border-radius:4px;background:var(--accent-soft);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .chip.allday{background:var(--allday-soft)}.chip.rep{background:var(--rep-soft)}
+.chip.cc{background:color-mix(in srgb,var(--c) 24%,transparent)}
 .chip:hover{filter:brightness(1.3)}
 .chip .ct{color:var(--fg2);margin-right:3px;font-variant-numeric:tabular-nums}
 
@@ -467,7 +470,9 @@ const today = () => { const n = new Date(); return new Date(n.getFullYear(), n.g
 const dlabel = d => `${d.getMonth() + 1}/${d.getDate()} (${WD[wday(d)]})`;
 const mins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
 const isPoint = ev => !!ev.time && (!ev.end_time || (ev.end_time === ev.time && ev.end_date === ev.date));   // 끝 없이 시작 시각만 있는 일정
-const PT_MIN = 25;   // 주간에서 시작 시각만 있는 일정이 차지하는 높이(분) = 한 줄
+const PT_MIN = 25;
+const gc = ev => ev.color ? " cc" : "";                 // 구글에서 고른 색이 있으면 class cc + --c
+const gcVar = ev => ev.color ? `--c:${ev.color};` : "";   // 주간에서 시작 시각만 있는 일정이 차지하는 높이(분) = 한 줄
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
 function isPast(ev) {
@@ -570,10 +575,10 @@ function ck(ev, sm) {
 function evRow(ev) {
   const past = isPast(ev), t = today();
   const now = !past && !ev.done && ev.time && ev.date === iso(t) && mins(ev.time) <= nowMin();
-  const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", now ? "now" : "", ev.done ? "done" : ""].join(" ");
+  const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", now ? "now" : "", ev.done ? "done" : ""].join(" ") + gc(ev);
   const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "📌";
   const meta = evMeta(ev);
-  return `<div class="${cls}" data-id="${esc(ev.id)}">${ck(ev)}<div class="bar"></div><div class="tm">${tm}</div>
+  return `<div class="${cls}" data-id="${esc(ev.id)}"${ev.color ? ` style="${gcVar(ev)}"` : ""}>${ck(ev)}<div class="bar"></div><div class="tm">${tm}</div>
     <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>
     <button class="ev-x" data-evdel="${esc(ev.id)}" title="삭제">×</button></div>`;
 }
@@ -642,7 +647,7 @@ function renderWeek() {
   h += `<div class="wk-row"><div class="gut" style="padding-top:5px" title="시간 없는 일정">📌</div>` + days.map(d => {
     const k = iso(d);
     const chips = S.events.filter(e => !e.time && e.date <= k && e.end_date >= k)
-      .map(e => `<div class="chip allday ${e.recurring ? "rep" : ""} ${isPast(e) ? "past" : ""} ${e.done ? "done" : ""}" data-id="${esc(e.id)}" title="${esc(e.title)}">${ck(e, true)}${esc(e.title)}</div>`).join("");
+      .map(e => `<div class="chip allday ${e.recurring ? "rep" : ""} ${isPast(e) ? "past" : ""} ${e.done ? "done" : ""}${gc(e)}" style="${gcVar(e)}" data-id="${esc(e.id)}" title="${esc(e.title)}">${ck(e, true)}${esc(e.title)}</div>`).join("");
     return `<div class="wa" data-new="${k}">${chips}</div>`;
   }).join("") + `</div>`;
   const prev = $("#wkBody"), keep = prev && prev.dataset.wk === iso(m) ? prev.scrollTop : null;   // 같은 주를 다시 그릴 땐 보던 자리 그대로
@@ -660,11 +665,11 @@ function renderWeek() {
     layoutDay(blocks);
     h += `<div class="wd ${iso(d) === td ? "today" : ""}" data-day="${k}">` + blocks.map(b => {
       const top = b.s / 60, hgt = Math.max((b.e - b.s) / 60, 0.42), w = 100 / b.ncol;
-      const ev = b.ev, pos = `top:calc(var(--hour) * ${top});left:calc(${w * b.col}% + 2px);width:calc(${w}% - 4px)`;
+      const ev = b.ev, pos = `${gcVar(ev)}top:calc(var(--hour) * ${top});left:calc(${w * b.col}% + 2px);width:calc(${w}% - 4px)`;
       if (b.pt)   // 시작 시각만 있는 일정: 체크칸 + 제목 한 줄 (시간은 안 씀)
-        return `<div class="blk pt ${ev.recurring ? "rep" : ""} ${isPast(ev) ? "past" : ""} ${ev.done ? "done" : ""}" data-id="${esc(ev.id)}" title="${esc(ev.time + " " + ev.title)}"
+        return `<div class="blk pt ${ev.recurring ? "rep" : ""} ${isPast(ev) ? "past" : ""} ${ev.done ? "done" : ""}${gc(ev)}" data-id="${esc(ev.id)}" title="${esc(ev.time + " " + ev.title)}"
           style="${pos}">${ck(ev, true)}${esc(ev.title)}</div>`;
-      return `<div class="blk ${ev.recurring ? "rep" : ""} ${isPast(ev) ? "past" : ""} ${ev.done ? "done" : ""}" data-id="${esc(ev.id)}" title="${esc(ev.title)}"
+      return `<div class="blk ${ev.recurring ? "rep" : ""} ${isPast(ev) ? "past" : ""} ${ev.done ? "done" : ""}${gc(ev)}" data-id="${esc(ev.id)}" title="${esc(ev.title)}"
         style="${pos};height:calc(var(--hour) * ${hgt} - 2px)">
         ${ck(ev, true)}${esc(ev.title)}${hgt >= 0.8 ? `<small>${ev.time}${ev.end_time ? "~" + ev.end_time : ""}${ev.location ? " · " + esc(ev.location) : ""}</small>` : ""}</div>`;
     }).join("") + (k === td ? `<div class="nowline" style="top:calc(var(--hour) * ${nowMin() / 60})"></div>` : "") + `</div>`;
@@ -686,7 +691,7 @@ function renderMonth() {
     const cls = ["md", d.getMonth() !== a.getMonth() ? "other" : "", k === td ? "today" : "", wday(d) === 6 ? "sun" : wday(d) === 5 ? "sat" : ""].join(" ");
     const show = evs.slice(0, 3);
     h += `<div class="${cls}" data-new="${k}"><span class="num">${d.getDate()}</span>` +
-      show.map(e => `<div class="chip ${e.time ? "" : "allday"} ${e.recurring ? "rep" : ""} ${isPast(e) ? "past" : ""} ${e.done ? "done" : ""}" data-id="${esc(e.id)}" title="${esc((e.time ? e.time + " " : "") + e.title)}">${ck(e, true)}${e.time && e.date === k ? `<span class="ct">${e.time}</span>` : ""}${esc(e.title)}</div>`).join("") +
+      show.map(e => `<div class="chip ${e.time ? "" : "allday"} ${e.recurring ? "rep" : ""} ${isPast(e) ? "past" : ""} ${e.done ? "done" : ""}${gc(e)}" style="${gcVar(e)}" data-id="${esc(e.id)}" title="${esc((e.time ? e.time + " " : "") + e.title)}">${ck(e, true)}${e.time && e.date === k ? `<span class="ct">${e.time}</span>` : ""}${esc(e.title)}</div>`).join("") +
       (evs.length > 3 ? `<span class="more" data-week="${k}">+${evs.length - 3}개 더</span>` : "") + `</div>`;
   }
   $("#view").innerHTML = h + `</div></div>`;
