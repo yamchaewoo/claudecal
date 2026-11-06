@@ -20,7 +20,8 @@ import datetime
 import calcore as core
 
 TASKS_SCOPE = "https://www.googleapis.com/auth/tasks"
-SCOPES = ["https://www.googleapis.com/auth/calendar.events", TASKS_SCOPE]
+CALLIST_SCOPE = "https://www.googleapis.com/auth/calendar.calendarlist"   # 구글 캘린더 기본 알림 바꾸기
+SCOPES = ["https://www.googleapis.com/auth/calendar.events", TASKS_SCOPE, CALLIST_SCOPE]
 DONE_KEY = "claudecalDone"   # 구글 일정의 숨은 칸(extendedProperties.private)에 완료 체크를 "1"/"0"으로
 DOING = "▶ "                 # 예전 '진행 중' 표시 — 이제 없는 기능이라 읽을 때 떼고, 고칠 때 지운다
 TASK_STATES = ("todo", "done")
@@ -302,7 +303,9 @@ def to_google(spec, tz_name, patch=False, recurrence=True):
             for x in (body["start"], body["end"]):
                 x.update(dateTime=None, timeZone=None)
     r = spec.get("remind")
-    if r is None:
+    if r is None and not timed:      # 종일 일정은 기본 = 알림 없음 (구글 기본값을 따르면 전날 밤 11시 반 같은 때 울린다)
+        body["reminders"] = {"useDefault": False, "overrides": []}
+    elif r is None:                  # 시간 있는 일정 = 구글 캘린더 기본 알림을 따른다 (위젯 설정과 같은 값)
         body["reminders"] = {"useDefault": True}
     else:
         body["reminders"] = {"useDefault": False,
@@ -338,8 +341,14 @@ def from_google(ev, tz):
         out["remind"] = None
     else:
         mins = [o["minutes"] for o in rem.get("overrides", []) if o.get("method") == "popup"]
-        out["remind"] = min(mins) if mins else -1
+        out["remind"] = min(mins) if mins else (None if not out["time"] else -1)   # 알림 없는 종일 일정 = 기본값
     return out
+
+
+def popup_min(reminders):
+    """구글 알림 목록 → 가장 이른 팝업 알림 분 (없으면 -1)"""
+    mins = [o.get("minutes", 0) for o in (reminders or []) if o.get("method") == "popup"]
+    return min(mins) if mins else -1
 
 
 def _snapshot(ev, recurrence=True):
@@ -358,11 +367,19 @@ class NeedTasksScope(Exception):
     """구글 할 일 권한이 없을 때 (예전에 캘린더 권한만 받은 연결)"""
 
 
+class NeedCalListScope(Exception):
+    """구글 캘린더 기본 알림을 바꿀 권한이 없을 때 (예전 연결)"""
+
+
 TASKS_SCOPE_MSG = "할 일 목록을 쓰려면 구글을 한 번 다시 연결해 주세요 (할 일 권한이 새로 필요해요)."
 
 
+def _has_scope(creds, scope):
+    return scope in (getattr(creds, "granted_scopes", None) or creds.scopes or [])
+
+
 def _has_tasks(creds):
-    return TASKS_SCOPE in (getattr(creds, "granted_scopes", None) or creds.scopes or [])
+    return _has_scope(creds, TASKS_SCOPE)
 
 
 def task_from_google(t):
@@ -394,6 +411,8 @@ class GoogleStore:
         self.token_path = os.path.join(app_dir, "token.json")
         self.svc = None
         self.tsvc = None          # 구글 할 일 (할 일 권한을 받았을 때만)
+        self.can_set_remind = False   # 구글 캘린더 기본 알림을 바꿀 권한
+        self.default_remind = core.load_json(os.path.join(app_dir, "google.json"), {}).get("default_remind")   # 구글 기본 알림(분, -1=없음)
         self.email = core.load_json(os.path.join(app_dir, "google.json"), {}).get("email", "")
 
     def label(self):
@@ -421,8 +440,8 @@ class GoogleStore:
                 if not interactive:
                     raise NeedLogin("구글 로그인이 만료됐어요. ⋯ → 설정에서 구글 캘린더를 다시 연결해 주세요.")
                 creds = None
-        if interactive and creds and not _has_tasks(creds):
-            creds = None   # 할 일 권한이 없는 옛 연결이면 다시 로그인해서 권한을 더 받는다
+        if interactive and creds and not (_has_tasks(creds) and _has_scope(creds, CALLIST_SCOPE)):
+            creds = None   # 할 일·기본 알림 권한이 없는 옛 연결이면 다시 로그인해서 권한을 더 받는다
         if not creds or not creds.valid:
             if not interactive:
                 raise NeedLogin("구글 캘린더가 연결되어 있지 않아요.")
@@ -439,6 +458,7 @@ class GoogleStore:
             f.write(creds.to_json())
         self.svc = build("calendar", "v3", credentials=creds, cache_discovery=False)
         self.tsvc = build("tasks", "v1", credentials=creds, cache_discovery=False) if _has_tasks(creds) else None
+        self.can_set_remind = _has_scope(creds, CALLIST_SCOPE)
 
     def _api(self):
         if self.svc is None:
@@ -459,13 +479,27 @@ class GoogleStore:
                 timeMax=_rfc(datetime.datetime.combine(t + datetime.timedelta(days=1), datetime.time(0))),
                 singleEvents=True, orderBy="startTime", maxResults=250, pageToken=token).execute()
             items += res.get("items", [])
-            if res.get("summary") and res["summary"] != self.email:   # 기본 캘린더 이름 = 구글 계정 메일
-                self.email = res["summary"]
-                core.save_json(os.path.join(self.app_dir, "google.json"), {"email": self.email})
+            dr = popup_min(res.get("defaultReminders"))   # 구글 캘린더 기본 알림 (캘린더 권한만으로도 읽힌다)
+            if (res.get("summary") and res["summary"] != self.email) or dr != self.default_remind:   # 기본 캘린더 이름 = 계정 메일
+                self.email, self.default_remind = res.get("summary") or self.email, dr
+                core.save_json(os.path.join(self.app_dir, "google.json"), {"email": self.email, "default_remind": dr})
             token = res.get("nextPageToken")
             if not token or len(items) > 2000:
                 break
         return sorted((from_google(e, self.tz) for e in items if e.get("status") != "cancelled"), key=_sort_key)
+
+    def set_default_remind(self, minutes):
+        """구글 캘린더 기본 알림을 바꾼다 (휴대폰·구글 캘린더 앱도 같이). minutes: 분, -1 = 알림 없음. 메일 알림은 그대로"""
+        if self.svc is None:
+            self.connect(interactive=False)
+        if not self.can_set_remind:
+            raise NeedCalListScope("기본 알림을 바꾸려면 구글 권한을 하나 더 받아야 해요. 구글을 다시 연결해 주세요.")
+        cl = self.svc.calendarList()
+        cur = cl.get(calendarId="primary").execute().get("defaultReminders") or []
+        keep = [r for r in cur if r.get("method") != "popup"]
+        cl.patch(calendarId="primary", body={"defaultReminders": keep + ([] if minutes < 0 else [{"method": "popup", "minutes": int(minutes)}])}).execute()
+        self.default_remind = int(minutes)
+        core.save_json(os.path.join(self.app_dir, "google.json"), {"email": self.email, "default_remind": self.default_remind})
 
     def _get(self, eid):
         return self._api().get(calendarId="primary", eventId=eid).execute()

@@ -313,6 +313,16 @@ body.dragging main { padding-bottom: 130px; }   /* 날짜 띠에 가려지는 �
       <div class="msg" id="sMsg"></div>
     </div>
     <div class="sec">
+      <h4>기본 알림</h4>
+      <select class="in" id="sRemind">
+        <option value="0">시작할 때</option><option value="5">5분 전</option><option value="10">10분 전</option><option value="15">15분 전</option>
+        <option value="30">30분 전</option><option value="60">1시간 전</option><option value="-1">알림 없음</option>
+      </select>
+      <div class="msg" id="sRemindMsg"></div>
+      <button class="btn wide" id="sRemindFix" hidden>구글 다시 연결 (알림 권한 추가)</button>
+      <p class="hint">구글 캘린더 기본 알림이라 PC 위젯과 같이 바뀌어요. 휴대폰 알림은 구글 캘린더 앱이 울려요. 종일 일정은 알림 없이 넣어요.</p>
+    </div>
+    <div class="sec">
       <h4>모델</h4>
       <div class="models" id="sModels">
         <button data-m="haiku"><b>Haiku</b>가장 빠름</button>

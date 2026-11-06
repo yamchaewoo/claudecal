@@ -65,15 +65,20 @@ function fakeTasks(method, path, body) {
   if (method === "DELETE") { tasks.delete(id); return null; }
 }
 
+let defaultReminders = [{method: "popup", minutes: 30}];   // 가짜 구글 캘린더 기본 알림
 export async function fakeGoogle(method, path, {query, body, api} = {}) {
   await wait(250);
   if (api === "tasks") return fakeTasks(method, path, body);
+  if (api === "callist") {
+    if (method === "PATCH") defaultReminders = JSON.parse(JSON.stringify(body.defaultReminders));
+    return {id: "primary", defaultReminders: JSON.parse(JSON.stringify(defaultReminders))};
+  }
   const id = decodeURIComponent(path.split("/")[1] || "");
   if (method === "GET" && path === "events") {
     const f = new Date(query.timeMin), t = new Date(query.timeMax);
     const items = [...events.values()].filter(e => !e.recurrence && e.status !== "cancelled" && startOf(e) < t && endOf(e) > f)
       .sort((a, b) => startOf(a) - startOf(b));
-    return {summary: "demo@example.com", items: JSON.parse(JSON.stringify(items))};
+    return {summary: "demo@example.com", defaultReminders: JSON.parse(JSON.stringify(defaultReminders)), items: JSON.parse(JSON.stringify(items))};
   }
   if (method === "POST") {
     const ev = {id: `n${seq++}`, status: "confirmed", htmlLink: "https://calendar.google.com", ...JSON.parse(JSON.stringify(body))};

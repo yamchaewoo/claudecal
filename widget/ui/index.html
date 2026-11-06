@@ -388,8 +388,10 @@ body.dragging .blk:hover,body.dragging .chip:hover{filter:none}
       <div class="sec"><h5>알림</h5>
         <label class="chk"><input type="checkbox" id="sNotify"> 일정 시작 전에 윈도우 알림</label>
         <div class="row" style="margin-top:4px"><span class="hint" style="margin:0">기본</span>
-          <select class="in" id="sRemind" style="max-width:140px"><option value="0">시작할 때</option><option value="5">5분 전</option><option value="10">10분 전</option><option value="15">15분 전</option><option value="30">30분 전</option><option value="60">1시간 전</option></select>
+          <select class="in" id="sRemind" style="max-width:140px"><option value="0">시작할 때</option><option value="5">5분 전</option><option value="10">10분 전</option><option value="15">15분 전</option><option value="30">30분 전</option><option value="60">1시간 전</option><option value="-1">알림 없음</option></select>
         </div>
+        <p class="hint" id="sRemindHint" style="margin:6px 0 0"></p>
+        <button class="btn" id="sRemindFix" style="margin-top:6px" hidden>구글 다시 연결 (알림 권한 추가)</button>
       </div>
       <div class="sec"><h5>저장 위치</h5>
         <div class="state-line"><span class="dot" id="sStoreDot"></span><span id="sStoreText"></span></div>
@@ -953,6 +955,10 @@ function fillSettings() {
   $("#sEngine").value = c.engine;
   $("#sQuick").checked = c.quick_parse; $("#sConfirm").checked = c.confirm_delete;
   $("#sNotify").checked = c.notify; $("#sRemind").value = String(c.remind_min);
+  $("#sRemindHint").textContent = !st.remind_google ? "이 PC 알림에만 쓰여요. 구글을 연결하면 휴대폰과 같은 값으로 맞춰져요."
+    : st.remind_can_set ? "구글 캘린더 기본 알림이에요. 바꾸면 휴대폰(구글 캘린더 앱)도 같이 바뀌어요. 종일 일정은 알림 없이 넣어요."
+    : "지금 구글 캘린더 기본 알림 값이에요. 여기서 바꾸려면 구글을 한 번 다시 연결해 주세요.";
+  $("#sRemindFix").hidden = !(st.remind_google && !st.remind_can_set);
   $("#sOnTop").checked = c.on_top; $("#sAuto").checked = c.autostart;
   $("#sHotkey").value = c.hotkey; $("#sDays").value = String(c.days_ahead);
   const g = st.store === "google";
@@ -1082,7 +1088,15 @@ function bind() {
   $("#sQuick").onchange = e => saveSetting("quick_parse", e.target.checked);
   $("#sConfirm").onchange = e => saveSetting("confirm_delete", e.target.checked);
   $("#sNotify").onchange = e => saveSetting("notify", e.target.checked);
-  $("#sRemind").onchange = e => saveSetting("remind_min", Number(e.target.value));
+  $("#sRemind").onchange = async e => {   // 구글 연결이면 구글 캘린더 기본 알림을 바꾼다 (휴대폰도 같이)
+    const r = await api.set_settings({remind_min: Number(e.target.value)});
+    if (r.state) S.st = r.state;
+    fillSettings();
+    if (r.ok) { render(); setStatus(S.st.remind_google ? "기본 알림을 바꿨어요. 휴대폰(구글 캘린더 앱)도 같이 바뀌어요." : "기본 알림을 바꿨어요.", "ok"); }
+    else if (r.need_callist_scope) { $("#sRemindHint").textContent = r.error; $("#sRemindFix").hidden = false; }
+    else setStatus(r.error, "err");
+  };
+  $("#sRemindFix").onclick = () => { $("#sRemindHint").textContent = "브라우저에서 구글 로그인을 끝내 주세요… (5분 안에)"; $("#sGConnect").onclick(); };
   $("#sOnTop").onchange = e => saveSetting("on_top", e.target.checked);
   $("#sAuto").onchange = e => saveSetting("autostart", e.target.checked);
   $("#sHotkey").onchange = e => saveSetting("hotkey", e.target.value.trim().toLowerCase() || "ctrl+shift+space");

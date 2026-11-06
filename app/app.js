@@ -9,9 +9,12 @@ import * as C from "./cal.js";
 const GOOGLE_CLIENT_ID = "560537057198-3jls07opathhum0n6neh21gt171v0dv7.apps.googleusercontent.com";   // 구글 클라우드 '웹 애플리케이션' 클라이언트 ID (공개돼도 되는 값)
 const SCOPE_CAL = "https://www.googleapis.com/auth/calendar.events";
 const SCOPE_TASKS = "https://www.googleapis.com/auth/tasks";
-const BASES = {cal: "https://www.googleapis.com/calendar/v3/calendars/primary/", tasks: "https://tasks.googleapis.com/tasks/v1/lists/@default/"};
+const SCOPE_CALLIST = "https://www.googleapis.com/auth/calendar.calendarlist";   // 구글 캘린더 기본 알림 바꾸기
+const BASES = {cal: "https://www.googleapis.com/calendar/v3/calendars/primary/", tasks: "https://tasks.googleapis.com/tasks/v1/lists/@default/",
+               callist: "https://www.googleapis.com/calendar/v3/users/me/calendarList/"};
 const DOING = "▶ ";   // 예전 '진행 중' 표시 — 이제 없는 기능이라 읽을 때 떼고, 고칠 때 지운다
 const TASKS_SCOPE_MSG = "할 일을 쓰려면 구글 권한을 하나 더 받아야 해요.";
+const CALLIST_SCOPE_MSG = "기본 알림을 바꾸려면 구글 권한을 하나 더 받아야 해요. 아래 [구글 다시 연결]을 눌러 주세요.";
 const REDIRECT = new URL("./", location.href).href;   // 구글 클라이언트에 등록한 리디렉션 주소와 같아야 함
 const SDK_URL = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.134.0/+esm";
 const NET_MSG = "인터넷에 연결하지 못했어요. 연결을 확인해 주세요.";
@@ -26,14 +29,17 @@ const store = {   // 이 휴대폰에만 남는 값 (사생활 보호 모드 등
 
 const S = {
   key: store.get("key", ""), model: store.get("model", "sonnet"), tok: store.get("tok"), email: store.get("email", ""),
+  gRemind: store.get("gRemind"),   // 구글 캘린더 기본 알림(분, -1=없음) — PC 위젯·구글 캘린더 앱과 같은 값
   events: [], query: null, undo: [], busy: false, pending: null, authError: null, installEvt: null, loadedAt: 0, hist: [], hIdx: -1,
   tab: store.get("tab", "cal"), scopes: store.get("scopes", ""), tasks: [], tasksErr: null, tasksNeedScope: false,
 };
 class NeedAuth extends Error {}
 class NeedTasksScope extends Error {}
+class NeedCalListScope extends Error {}
 const tokenOk = () => !!DEMO || (S.tok && S.tok.exp > Date.now() + 60e3);
 const connected = () => !!DEMO || tokenOk() || !!S.email;   // 한 번이라도 연결했으면 (토큰은 만료됐을 수 있음)
 const hasTasksScope = () => !!DEMO || S.scopes.includes("auth/tasks");
+const hasCalListScope = () => !!DEMO || S.scopes.includes("calendar.calendarlist");
 function setTok(t) { S.tok = t; store.set("tok", t); }
 
 // ---------------- 구글 로그인 (리디렉션) ----------------
@@ -49,7 +55,7 @@ function authRedirect(silent) {   // 구글로 넘어가면 true
   store.set("state", state);
   store.set("authTry", Date.now());
   // 조용히 다시 받을 땐 이미 받은 권한만 (새 권한을 달면 동의 화면이 필요해서 실패한다)
-  const scope = silent ? (S.scopes || SCOPE_CAL) : `${SCOPE_CAL} ${SCOPE_TASKS}`;
+  const scope = silent ? (S.scopes || SCOPE_CAL) : `${SCOPE_CAL} ${SCOPE_TASKS} ${SCOPE_CALLIST}`;
   const p = new URLSearchParams({client_id: GOOGLE_CLIENT_ID, redirect_uri: REDIRECT, response_type: "token", scope,
                                  include_granted_scopes: "true", state, prompt: silent ? "none" : "select_account"});
   if (S.email) p.set("login_hint", S.email);
@@ -87,6 +93,7 @@ function disconnect() {
 async function realGoogle(method, path, {query, body, api = "cal"} = {}) {   // api: cal(캘린더) | tasks(할 일)
   if (!tokenOk()) throw new NeedAuth("구글 로그인이 필요해요.");
   if (api === "tasks" && !hasTasksScope()) throw new NeedTasksScope(TASKS_SCOPE_MSG);
+  if (api === "callist" && !hasCalListScope()) throw new NeedCalListScope(CALLIST_SCOPE_MSG);
   const url = new URL(BASES[api] + path);
   for (const [k, v] of Object.entries(query || {})) if (v !== null && v !== undefined) url.searchParams.set(k, v);
   let r;
@@ -100,6 +107,7 @@ async function realGoogle(method, path, {query, body, api = "cal"} = {}) {   // 
   if (!r.ok) {
     const msg = data.error?.message || "";
     if (api === "tasks" && r.status === 403 && /insufficient|scope/i.test(msg)) throw new NeedTasksScope(TASKS_SCOPE_MSG);
+    if (api === "callist" && r.status === 403 && /insufficient|scope/i.test(msg)) throw new NeedCalListScope(CALLIST_SCOPE_MSG);
     if (r.status === 403 && /has not been used|disabled/i.test(msg)) throw new Error("구글 클라우드에서 이 기능(API)이 꺼져 있어요. 배포한 사람이 켜야 해요.");
     const err = new Error(r.status === 403 && /insufficient|scope/i.test(msg) ? "캘린더 권한이 없어요. 구글을 다시 연결하고 캘린더 권한에 체크해 주세요."
       : r.status === 404 || r.status === 410 ? "일정을 찾지 못했어요 (이미 지워졌을 수 있어요)." : `구글 오류(${r.status}) ${msg}`.slice(0, 200));
@@ -119,6 +127,7 @@ async function listRange(f, t) {
                                                      singleEvents: "true", orderBy: "startTime", maxResults: 250, pageToken}});
     items.push(...(res.items || []));
     if (res.summary && res.summary !== S.email && !DEMO) { S.email = res.summary; store.set("email", S.email); }   // 기본 캘린더 이름 = 계정 메일
+    if (res.defaultReminders) { S.gRemind = C.popupMin(res.defaultReminders); store.set("gRemind", S.gRemind); }   // 구글 기본 알림
     pageToken = res.nextPageToken;
   } while (pageToken && items.length <= 2000);
   return items.filter(e => e.status !== "cancelled").map(C.fromGoogle).sort((a, b) => C.sortKey(a) < C.sortKey(b) ? -1 : 1);
@@ -199,6 +208,14 @@ async function gUndo(records) {
       await google("POST", "tasks", {api: "tasks", body: C.clean(r.body)});
     }
   }
+}
+
+async function setDefaultRemind(minutes) {   // 구글 캘린더 기본 알림 바꾸기 (PC 위젯·구글 캘린더 앱도 같이). 메일 알림은 그대로
+  const cur = (await google("GET", "primary", {api: "callist"})).defaultReminders || [];
+  const body = {defaultReminders: [...cur.filter(r => r.method !== "popup"), ...(minutes < 0 ? [] : [{method: "popup", minutes}])]};
+  await google("PATCH", "primary", {api: "callist", body});
+  S.gRemind = minutes;
+  store.set("gRemind", minutes);
 }
 
 // ---------------- 기약 없는 할 일 (구글 할 일 기본 목록) — 위젯의 GoogleStore와 같은 규칙 ----------------
@@ -1047,8 +1064,32 @@ function openSettings() {
   $("#sConnect").textContent = connected() ? "다시 연결" : "구글 캘린더 연결";
   $("#sDisconnect").hidden = !connected() || !!DEMO;
   $("#sInstall").hidden = !S.installEvt;
+  paintRemind();
   $("#settings").hidden = false;
 }
+function paintRemind(msg) {   // 설정 창 '알림' 칸
+  const v = S.gRemind ?? 30, sel = $("#sRemind");
+  sel.value = String(v);
+  if (sel.value !== String(v)) { sel.add(new Option(`${v}분 전`, String(v))); sel.value = String(v); }   // 목록에 없는 값 (구글에서 직접 고른 값)
+  sel.disabled = !connected();
+  $("#sRemindMsg").textContent = msg || (!connected() ? "구글을 연결하면 보여요." : !hasCalListScope()
+    ? "바꾸려면 구글 권한을 하나 더 받아야 해요." : "");
+  $("#sRemindFix").hidden = !connected() || hasCalListScope();
+}
+async function changeRemind(v) {
+  const before = S.gRemind;
+  paintRemind("바꾸는 중…");
+  try {
+    await setDefaultRemind(v);
+    paintRemind("바꿨어요. PC 위젯·구글 캘린더 앱도 같이 바뀌어요.");
+  } catch (e) {
+    S.gRemind = before;
+    if (e instanceof NeedAuth) { store.set("authTry", 0); return authRedirect(true); }
+    paintRemind(e instanceof NeedCalListScope ? CALLIST_SCOPE_MSG : e.message);
+    if (e instanceof NeedCalListScope) $("#sRemindFix").hidden = false;
+  }
+}
+
 async function saveKey(inputSel) {
   const key = $(inputSel).value.trim();
   const msg = $(inputSel === "#kInput" ? "#kMsg" : "#sMsg");
@@ -1144,6 +1185,8 @@ function bind() {
   $("#sSave").onclick = () => saveKey("#sKey");
   $("#sConnect").onclick = () => authRedirect(false);
   $("#sDisconnect").onclick = () => { disconnect(); $("#settings").hidden = true; };
+  $("#sRemind").onchange = e => changeRemind(Number(e.target.value));
+  $("#sRemindFix").onclick = () => authRedirect(false);
   $("#sModels").addEventListener("click", e => {
     const b = e.target.closest("[data-m]");
     if (!b) return;

@@ -167,11 +167,18 @@ class Api:
     def _err(e):
         if isinstance(e, stores.NeedTasksScope):
             return {"ok": False, "error": str(e), "need_tasks_scope": True}
+        if isinstance(e, stores.NeedCalListScope):
+            return {"ok": False, "error": str(e), "need_callist_scope": True}
         msg = str(e) if isinstance(e, (RuntimeError, KeyError, stores.NeedLogin, ValueError)) else f"{type(e).__name__}: {e}"
         return {"ok": False, "error": msg.strip("'\"")[:300]}
 
+    def _remind_default(self):
+        """'기본' 알림(분, -1=없음): 구글 연결이면 구글 캘린더 기본 알림 (휴대폰·구글 앱과 같은 값), 아니면 이 PC 설정"""
+        g = getattr(self._store, "default_remind", None)
+        return g if g is not None else int(self._conf.get("remind_min", 10))
+
     def _state(self):
-        c = self._conf
+        c = {**self._conf, "remind_min": self._remind_default()}
         key = c.get("api_key", "")
         return {
             "store": self._store.kind, "store_label": self._store.label(),
@@ -186,6 +193,7 @@ class Api:
             "update_ready": (self._update_ready or {}).get("version", ""), "just_updated": self._just_updated,
             "can_undo": bool(self._undo), "undo_desc": self._undo[-1]["desc"] if self._undo else "",
             "today": core.now_local().date().isoformat(), "mode": self._mode,
+            "remind_google": self._store.kind == "google", "remind_can_set": bool(getattr(self._store, "can_set_remind", False)),
         }
 
     # ----- 화면 시작 -----
@@ -323,6 +331,13 @@ class Api:
         allowed = {"engine", "model", "quick_parse", "confirm_delete", "notify", "remind_min", "on_top",
                    "days_ahead", "view", "hotkey", "autostart", "tasks_panel", "auto_update"}
         changes = {k: v for k, v in (changes or {}).items() if k in allowed}
+        if "remind_min" in changes and self._store.kind == "google":   # 구글 캘린더 기본 알림을 바꾼다 → 휴대폰·구글 앱도 같이
+            try:
+                with self._lock:
+                    self._store.set_default_remind(int(changes["remind_min"]))
+                self._soon_at = 0
+            except Exception as e:
+                return {**self._err(e), "state": self._state()}
         self._conf.update(changes)
         core.save_json(core.CONF_FILE, self._conf)
         if "on_top" in changes and self._window:
@@ -673,7 +688,7 @@ class Api:
                 continue
             rem = ev.get("remind")
             if rem is None:
-                rem = int(self._conf.get("remind_min", 10))
+                rem = self._remind_default()
             if rem < 0:
                 continue
             start = datetime.datetime.combine(core.valid_date(ev["date"]), core.valid_time(ev["time"]))

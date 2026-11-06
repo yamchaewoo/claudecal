@@ -197,9 +197,13 @@ export function fromGoogle(ev) {
   if (rem.useDefault ?? true) out.remind = null;
   else {
     const mins = (rem.overrides || []).filter(o => o.method === "popup").map(o => o.minutes);
-    out.remind = mins.length ? Math.min(...mins) : -1;
+    out.remind = mins.length ? Math.min(...mins) : out.time ? -1 : null;   // 알림 없는 종일 일정 = 기본값
   }
   return out;
+}
+export function popupMin(reminders) {   // 구글 알림 목록 → 가장 이른 팝업 알림 분 (없으면 -1)
+  const mins = (reminders || []).filter(o => o.method === "popup").map(o => o.minutes ?? 0);
+  return mins.length ? Math.min(...mins) : -1;
 }
 
 export const isPoint = ev => !!ev.time && (!ev.end_time || (ev.end_time === ev.time && ev.end_date === ev.date));   // 끝 없이 시작 시각만
@@ -222,7 +226,8 @@ export function toGoogle(spec, patch = false, recurrence = true) {
     if (patch) for (const x of [body.start, body.end]) Object.assign(x, {dateTime: null, timeZone: null});
   }
   const r = spec.remind;
-  body.reminders = r === null || r === undefined ? {useDefault: true}
+  body.reminders = (r === null || r === undefined) && !spec.time ? {useDefault: false, overrides: []}   // 종일 = 알림 없음 (구글 기본값이면 전날 밤에 울림)
+    : r === null || r === undefined ? {useDefault: true}   // 시간 있는 일정 = 구글 캘린더 기본 알림 (PC 위젯과 같은 값)
     : {useDefault: false, overrides: r < 0 ? [] : [{method: "popup", minutes: r}]};
   if (recurrence && spec.rrule) body.recurrence = [googleRrule(spec.rrule, !!spec.time)];
   return body;
