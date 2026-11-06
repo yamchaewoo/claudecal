@@ -683,7 +683,8 @@ class Api:
             self._fired.add(key)
             left = int((start - now).total_seconds() // 60)
             when = "지금 시작" if left <= 0 else (f"{left}분 뒤" if left < 60 else f"{left // 60}시간 {left % 60}분 뒤".replace(" 0분", ""))
-            msg = " · ".join(x for x in (f"{ev['time']}~{ev.get('end_time') or ''}".rstrip("~"), ev.get("location")) if x)
+            end = ev.get("end_time") if ev.get("end_time") != ev["time"] or ev.get("end_date") != ev["date"] else ""   # 시작 시각만 있는 일정
+            msg = " · ".join(x for x in (f"{ev['time']}~{end or ''}".rstrip("~"), ev.get("location")) if x)
             self._toast(f"{when} · {ev['title']}", msg)
             self._emit("reminder", {"title": ev["title"], "when": when, "id": ev["id"]})
 

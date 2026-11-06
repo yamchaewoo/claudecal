@@ -650,7 +650,7 @@ function remindText(r) {
 function evRow(ev) {
   const past = isPast(ev);
   const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", ev.done ? "done" : ""].join(" ");
-  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date ? `<small>~${ev.end_time}</small>` : ""}` : "종일";
+  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !C.isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "종일";
   const meta = [ev.location && "📍 " + ev.location, ev.end_date !== ev.date && `~${C.dlabel(ev.end_date)}`, ev.recurring && "🔁 반복", remindText(ev.remind)]
     .filter(Boolean).join(" · ");
   return `<div class="${cls}" data-id="${esc(ev.id)}">
@@ -752,7 +752,7 @@ async function openSheet(id) {
   if (!ev) return;
   S.sheetEv = ev;
   $("#shTitle").textContent = ev.title;
-  const when = ev.time ? `${C.dlabel(ev.date)} ${ev.time}~${ev.end_date !== ev.date ? C.dlabel(ev.end_date) + " " : ""}${ev.end_time || ""}`
+  const when = ev.time ? `${C.dlabel(ev.date)} ${ev.time}` + (C.isPoint(ev) ? "" : `~${ev.end_date !== ev.date ? C.dlabel(ev.end_date) + " " : ""}${ev.end_time || ""}`)
     : C.dlabel(ev.date) + (ev.end_date !== ev.date ? ` ~ ${C.dlabel(ev.end_date)}` : "") + " 종일";
   $("#shWhen").textContent = when;
   $("#shRule").textContent = ev.recurring ? "🔁 반복 일정" : "";

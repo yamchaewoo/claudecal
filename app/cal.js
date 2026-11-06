@@ -110,9 +110,9 @@ export function normalize(spec) {
   const t = validTime(spec.time), ed = validDate(spec.end_date) || d;
   if (t) {
     const start = at(d, t), et = validTime(spec.end_time);
-    let end = et ? at(ed, et) : new Date(start.getTime() + 3600e3);
-    if (end <= start && et && ed === d) end.setDate(end.getDate() + 1);   // 23:00~01:00 처럼 밤을 넘기는 일정
-    if (end <= start) end = new Date(start.getTime() + 3600e3);
+    let end = et ? at(ed, et) : new Date(start);   // 끝 시간을 안 적었으면 시작 시각만 (길이 0)
+    if (end < start && et && ed === d) end.setDate(end.getDate() + 1);   // 23:00~01:00 처럼 밤을 넘기는 일정
+    if (end < start) end = new Date(start);
     Object.assign(out, {time: t, end_date: isoD(end), end_time: hm(end)});
   } else out.end_date = ed > d ? ed : d;
   const r = spec.remind === null || spec.remind === undefined || spec.remind === "" ? NaN : Number(spec.remind);
@@ -130,7 +130,7 @@ export function mergeChanges(old, a) {
   if (nd) { nw.date = nd; nw.end_date = ned || addDays(nd, dayDiff(oed, od)); }
   else if (ned) nw.end_date = ned;
   if (nt) {
-    const dur = ot && oet ? at(oed, oet) - at(od, ot) : 3600e3;
+    const dur = ot && oet ? at(oed, oet) - at(od, ot) : 0;
     const start = at(nw.date, nt), end = new Date(start.getTime() + dur);
     Object.assign(nw, {time: nt, end_date: isoD(end), end_time: hm(end)});
   }
@@ -147,7 +147,7 @@ export function brief(near) {
     const sid = `e${i}`;
     sidMap[sid] = ev;
     const b = {sid, title: ev.title, date: ev.date, time: ev.time};
-    if (ev.end_time) b.end_time = ev.end_time;
+    if (ev.end_time && !isPoint(ev)) b.end_time = ev.end_time;   // 시작 시각만 있는 일정은 끝을 안 보낸다
     if (ev.location) b.loc = ev.location;
     if (ev.recurring) b.repeat = true;
     if (ev.done) b.done = true;
@@ -198,6 +198,7 @@ export function fromGoogle(ev) {
   return out;
 }
 
+export const isPoint = ev => !!ev.time && (!ev.end_time || (ev.end_time === ev.time && ev.end_date === ev.date));   // 끝 없이 시작 시각만
 export const sortKey = ev => `${ev.date} ${ev.time ? "1" + ev.time : "0"} ${ev.title}`;   // 같은 날은 종일 일정 먼저
 
 // 일정 내용 → 구글 이벤트 body. patch=true면 비운 칸은 null로 보내 지운다

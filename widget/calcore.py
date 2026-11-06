@@ -138,11 +138,11 @@ def normalize(spec):
     if t:
         start = datetime.datetime.combine(d, t)
         et = valid_time(spec.get("end_time"))
-        end = datetime.datetime.combine(ed, et) if et else start + datetime.timedelta(hours=1)
-        if end <= start and et and ed == d:          # 23:00~01:00 처럼 밤을 넘기는 일정
+        end = datetime.datetime.combine(ed, et) if et else start   # 끝 시간을 안 적었으면 시작 시각만 (길이 0)
+        if end < start and et and ed == d:           # 23:00~01:00 처럼 밤을 넘기는 일정
             end += datetime.timedelta(days=1)
-        if end <= start:
-            end = start + datetime.timedelta(hours=1)
+        if end < start:
+            end = start
         out.update(time=f"{t:%H:%M}", end_date=end.date().isoformat(), end_time=f"{end:%H:%M}")
     else:
         out["end_date"] = max(ed, d).isoformat()
@@ -174,7 +174,7 @@ def merge_changes(old, a):
         if ot and oet:
             dur = datetime.datetime.combine(oed, oet) - datetime.datetime.combine(od, ot)
         else:
-            dur = datetime.timedelta(hours=1)
+            dur = datetime.timedelta(0)
         start = datetime.datetime.combine(d, nt)
         end = start + dur
         new.update(time=f"{nt:%H:%M}", end_date=end.date().isoformat(), end_time=f"{end:%H:%M}")
@@ -469,7 +469,7 @@ SYSTEM_PROMPT = """너는 사용자의 캘린더 비서다. 사용자가 대충 
 
 칸 설명:
 - date, end_date: YYYY-MM-DD. time, end_time: HH:MM(24시간). 시간 없이 날짜만 있으면 time=null(종일 일정).
-- 끝 시간을 모르면 end_time=null(앱이 1시간으로 잡음). 여러 날짜에 걸친 종일 일정은 end_date.
+- 끝 시간은 사용자가 적었을 때만. 모르면 end_time=null(앱이 시작 시각만 넣음 — 길이를 지어내지 말 것). 여러 날짜에 걸친 종일 일정은 end_date.
 - location: 장소가 보이면("강남에서", "302호"). note: 그 밖의 부가 정보. 없으면 null.
 - rrule: 반복 일정이면 RFC 5545 RRULE 본문(접두어 없이). 예) 매주 화목 → "FREQ=WEEKLY;BYDAY=TU,TH", 매달 25일 → "FREQ=MONTHLY;BYMONTHDAY=25", 격주 → "FREQ=WEEKLY;INTERVAL=2;BYDAY=..", 12월까지 → 끝에 ";UNTIL=20261231", 10번 → ";COUNT=10". 반복이면 date는 첫 번째 날짜.
 - remind: "30분 전에 알려줘" 같은 알림 요청이 있을 때만 분 단위 정수(1시간 전=60, 하루 전=1440, 정각=0). 없으면 null.
@@ -616,7 +616,7 @@ def brief_events(near):
         sid = f"e{i}"
         sid_map[sid] = ev
         b = {"sid": sid, "title": ev["title"], "date": ev["date"], "time": ev["time"]}
-        if ev.get("end_time"):
+        if ev.get("end_time") and (ev["end_time"] != ev.get("time") or ev.get("end_date") != ev.get("date")):   # 시작 시각만 있는 일정은 끝을 안 보낸다
             b["end_time"] = ev["end_time"]
         if ev.get("location"):
             b["loc"] = ev["location"]

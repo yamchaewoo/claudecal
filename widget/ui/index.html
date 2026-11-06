@@ -168,6 +168,7 @@ footer span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .blk:hover{filter:brightness(1.25);z-index:3}
 .blk.rep{background:var(--rep-soft);border-left-color:var(--rep)}
 .blk small{display:block;color:var(--fg2);font-size:10.5px}
+.blk.pt{height:17px;padding:0 5px;line-height:17px;white-space:nowrap;text-overflow:ellipsis}   /* 시작 시각만 있는 일정 = 얇은 한 줄 */
 .nowline{position:absolute;left:0;right:0;height:2px;background:var(--accent);z-index:4;pointer-events:none}
 .nowline::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:8px;background:var(--accent)}
 .chip{font-size:11px;line-height:1.35;padding:1px 5px;border-radius:4px;background:var(--accent-soft);color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
@@ -325,7 +326,7 @@ body.dragging .blk:hover,body.dragging .chip:hover{filter:none}
       <div class="fld" style="display:flex;gap:18px"><label class="chk"><input type="checkbox" id="fAllDay"> 종일</label>
         <label class="chk" id="fDoneLb"><input type="checkbox" id="fDone"> 완료</label></div>
       <div class="fld"><span class="lb">시작</span><div class="row"><input class="in" type="date" id="fDate"><input class="in tmf" type="time" id="fTime"></div></div>
-      <div class="fld"><span class="lb">끝</span><div class="row"><input class="in" type="date" id="fEndDate"><input class="in tmf" type="time" id="fEndTime"></div></div>
+      <div class="fld"><span class="lb">끝</span><div class="row"><input class="in" type="date" id="fEndDate"><input class="in tmf" type="time" id="fEndTime" title="비워 두면 끝 시간 없이 시작 시각만 넣어요"></div></div>
       <div class="fld"><label>장소</label><input class="in" id="fLoc" placeholder="(선택)"></div>
       <div class="fld"><label>메모</label><textarea class="in" id="fNote" placeholder="(선택)"></textarea></div>
       <div class="fld"><label>반복</label>
@@ -465,6 +466,8 @@ const mondayOf = d => addDays(d, -wday(d));
 const today = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
 const dlabel = d => `${d.getMonth() + 1}/${d.getDate()} (${WD[wday(d)]})`;
 const mins = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const isPoint = ev => !!ev.time && (!ev.end_time || (ev.end_time === ev.time && ev.end_date === ev.date));   // 끝 없이 시작 시각만 있는 일정
+const PT_MIN = 25;   // 주간에서 시작 시각만 있는 일정이 차지하는 높이(분) = 한 줄
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const nowMin = () => { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); };
 function isPast(ev) {
@@ -568,7 +571,7 @@ function evRow(ev) {
   const past = isPast(ev), t = today();
   const now = !past && !ev.done && ev.time && ev.date === iso(t) && mins(ev.time) <= nowMin();
   const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", now ? "now" : "", ev.done ? "done" : ""].join(" ");
-  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date ? `<small>~${ev.end_time}</small>` : ""}` : "종일";
+  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "종일";
   const meta = evMeta(ev);
   return `<div class="${cls}" data-id="${esc(ev.id)}">${ck(ev)}<div class="bar"></div><div class="tm">${tm}</div>
     <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>
@@ -649,17 +652,20 @@ function renderWeek() {
     const k = iso(d), blocks = [];
     for (const e of S.events) {
       if (!e.time || e.date > k || e.end_date < k) continue;
-      const s = e.date === k ? mins(e.time) : 0;
-      let en = e.end_date === k ? mins(e.end_time || e.time) : 1440;
+      const s = e.date === k ? mins(e.time) : 0, pt = isPoint(e);
+      let en = pt ? Math.min(s + PT_MIN, 1440) : e.end_date === k ? mins(e.end_time || e.time) : 1440;
       if (en <= s) en = s + 30;
-      blocks.push({ev: e, s, e: en});
+      blocks.push({ev: e, s, e: en, pt});
     }
     layoutDay(blocks);
     h += `<div class="wd ${iso(d) === td ? "today" : ""}" data-day="${k}">` + blocks.map(b => {
       const top = b.s / 60, hgt = Math.max((b.e - b.s) / 60, 0.42), w = 100 / b.ncol;
-      const ev = b.ev;
+      const ev = b.ev, pos = `top:calc(var(--hour) * ${top});left:calc(${w * b.col}% + 2px);width:calc(${w}% - 4px)`;
+      if (b.pt)   // 시작 시각만 있는 일정: 체크칸 + 제목 한 줄 (시간은 안 씀)
+        return `<div class="blk pt ${ev.recurring ? "rep" : ""} ${isPast(ev) ? "past" : ""} ${ev.done ? "done" : ""}" data-id="${esc(ev.id)}" title="${esc(ev.time + " " + ev.title)}"
+          style="${pos}">${ck(ev, true)}${esc(ev.title)}</div>`;
       return `<div class="blk ${ev.recurring ? "rep" : ""} ${isPast(ev) ? "past" : ""} ${ev.done ? "done" : ""}" data-id="${esc(ev.id)}" title="${esc(ev.title)}"
-        style="top:calc(var(--hour) * ${top});height:calc(var(--hour) * ${hgt} - 2px);left:calc(${w * b.col}% + 2px);width:calc(${w}% - 4px)">
+        style="${pos};height:calc(var(--hour) * ${hgt} - 2px)">
         ${ck(ev, true)}${esc(ev.title)}${hgt >= 0.8 ? `<small>${ev.time}${ev.end_time ? "~" + ev.end_time : ""}${ev.location ? " · " + esc(ev.location) : ""}</small>` : ""}</div>`;
     }).join("") + (k === td ? `<div class="nowline" style="top:calc(var(--hour) * ${nowMin() / 60})"></div>` : "") + `</div>`;
   }
@@ -840,8 +846,7 @@ async function openPanel(id, preset = {}) {
   $("#fDate").value = d;
   $("#fTime").value = t || "09:00";
   $("#fEndDate").value = ev ? ev.end_date : d;
-  const et = ev?.end_time || (t ? `${pad(Math.min(23, Math.floor(mins(t) / 60) + 1))}:${pad(mins(t) % 60)}` : "10:00");
-  $("#fEndTime").value = et;
+  $("#fEndTime").value = ev && !isPoint(ev) ? ev.end_time || "" : "";   // 비워 두면 끝 없이 시작 시각만
   $("#fLoc").value = ev?.location || "";
   $("#fNote").value = ev?.note || "";
   const pr = parseRule(ev?.rrule);
@@ -1400,8 +1405,8 @@ function paintPreview(t) {   // 주간의 시간 칸: 놓으면 들어갈 자리
   if (!t?.el.dataset.day) return;
   const ev = DRAG.src.ev;
   let s = null, e = null;
-  if (t.kind === "task" && t.time) { s = mins(t.time); e = s + 60; }
-  else if (t.kind === "move" && ev.time) { s = mins(ev.time); e = ev.end_date === ev.date ? mins(ev.end_time || ev.time) : 1440; if (e <= s) e = s + 30; }
+  if (t.kind === "task" && t.time) { s = mins(t.time); e = s + PT_MIN; }
+  else if (t.kind === "move" && ev.time) { s = mins(ev.time); e = isPoint(ev) ? s + PT_MIN : ev.end_date === ev.date ? mins(ev.end_time || ev.time) : 1440; if (e <= s) e = s + 30; }
   if (s == null) return;
   t.el.insertAdjacentHTML("beforeend", `<div class="drop-prev" style="top:calc(var(--hour) * ${s / 60});height:calc(var(--hour) * ${(Math.min(e, 1440) - s) / 60} - 2px)"></div>`);
 }
@@ -1485,10 +1490,9 @@ async function dropIt(s, t) {   // 화면은 바로 바꾸고, 저장한 뒤 다
     return refresh();
   }
   if (s.kind === "task" && t.kind === "task") {
-    const tk = s.task, em = t.time && Math.min(mins(t.time) + 60, 23 * 60 + 59);
+    const tk = s.task;
     S.tasks = (S.tasks || []).filter(x => x.id !== tk.id);
-    S.events.push({id: "tmp-" + Date.now(), title: tk.title, date: t.date, end_date: t.date, time: t.time,
-                   end_time: t.time ? `${pad(Math.floor(em / 60))}:${pad(em % 60)}` : null,
+    S.events.push({id: "tmp-" + Date.now(), title: tk.title, date: t.date, end_date: t.date, time: t.time, end_time: t.time,   // 시작 시각만
                    location: "", note: tk.notes || "", recurring: false, done: tk.state === "done", remind: null});
     S.events.sort((a, b) => evOrder(a).localeCompare(evOrder(b)));
     render(); renderTasks();
