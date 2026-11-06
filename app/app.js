@@ -650,7 +650,7 @@ function remindText(r) {
 function evRow(ev) {
   const past = isPast(ev);
   const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", ev.done ? "done" : ""].join(" ");
-  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !C.isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "종일";
+  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !C.isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "📌";
   const meta = [ev.location && "📍 " + ev.location, ev.end_date !== ev.date && `~${C.dlabel(ev.end_date)}`, ev.recurring && "🔁 반복", remindText(ev.remind)]
     .filter(Boolean).join(" · ");
   return `<div class="${cls}" data-id="${esc(ev.id)}">
@@ -753,7 +753,7 @@ async function openSheet(id) {
   S.sheetEv = ev;
   $("#shTitle").textContent = ev.title;
   const when = ev.time ? `${C.dlabel(ev.date)} ${ev.time}` + (C.isPoint(ev) ? "" : `~${ev.end_date !== ev.date ? C.dlabel(ev.end_date) + " " : ""}${ev.end_time || ""}`)
-    : C.dlabel(ev.date) + (ev.end_date !== ev.date ? ` ~ ${C.dlabel(ev.end_date)}` : "") + " 종일";
+    : C.dlabel(ev.date) + (ev.end_date !== ev.date ? ` ~ ${C.dlabel(ev.end_date)}` : "") + " 📌";
   $("#shWhen").textContent = when;
   $("#shRule").textContent = ev.recurring ? "🔁 반복 일정" : "";
   $("#shLoc").textContent = ev.location ? "📍 " + ev.location : "";
@@ -772,7 +772,7 @@ async function deleteEvent(id) {   // 일정 줄의 ✕: 묻고 지운다 (반�
   const ev = S.events.find(e => e.id === id);
   if (!ev || S.busy) return;
   if (ev.recurring) { await openSheet(id); return deleteFromSheet(null); }
-  if (!(await askDelete([`${C.dlabel(ev.date)} ${ev.time || "종일"} ${ev.title}`]))) return;
+  if (!(await askDelete([`${C.dlabel(ev.date)} ${ev.time || "📌"} ${ev.title}`]))) return;
   S.busy = true;
   setBusy("지우는 중");
   try {
@@ -840,9 +840,9 @@ function dropTarget(x, y) {
   const date = d.dataset.dday;
   if (s.kind === "ev") {   // 띠의 날짜 = 그날 시작, 목록의 하루 묶음 = 잡은 날에서 놓은 날만큼 (여러 날 일정은 통째로)
     const shift = C.dayDiff(date, d.closest("#dropbar") ? s.ev.date : s.from);
-    return {el: d, kind: "move", shift, label: shift ? `→ ${C.dlabel(C.addDays(s.ev.date, shift))} ${s.ev.time || "종일"}` : "제자리 (안 옮겨요)"};
+    return {el: d, kind: "move", shift, label: shift ? `→ ${C.dlabel(C.addDays(s.ev.date, shift))} ${s.ev.time || "📌"}` : "제자리 (안 옮겨요)"};
   }
-  return {el: d, kind: "task", date, label: `→ ${C.dlabel(date)} 종일 일정으로`};
+  return {el: d, kind: "task", date, label: `→ ${C.dlabel(date)} 📌 일정으로`};
 }
 function markSrc(on) {
   const s = DRAG.src;
@@ -949,7 +949,7 @@ async function dropIt(s, t) {   // 화면은 바로 바꾸고, 저장한 뒤 다
       setBusy("옮기는 중");
       const rec = await gMove(ev.id, t.shift);
       S.undo.push({desc: "옮기기: " + ev.title, batch: [rec]});
-      setStatus(`옮겼어요: ${C.dlabel(ev.date)} ${ev.time || "종일"} ${ev.title}` + (ev.recurring ? " (반복 중 이 회차만)" : ""), "ok");
+      setStatus(`옮겼어요: ${C.dlabel(ev.date)} ${ev.time || "📌"} ${ev.title}` + (ev.recurring ? " (반복 중 이 회차만)" : ""), "ok");
     } else if (toTask) {
       const ev = s.ev;
       S.events = S.events.filter(x => x.id !== ev.id);

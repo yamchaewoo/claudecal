@@ -1,13 +1,13 @@
 {
- "version": "2026.11.06.1",
- "notes": "끝 시간을 안 적으면 시작 시각만 넣어요 (주간 보기에선 얇은 한 줄)",
+ "version": "2026.11.06.2",
+ "notes": "시간 없는 일정은 '종일' 대신 📌로 보여요",
  "files": {
   "claude_cal.pyw": "6b879262740976e7d73f780ddb654443578ab6ef1af2752d6491f945e9428bdc",
   "app_api.py": "85c2919f703aee9c51bb32eb2d903611607649e6eee23ff8bf4e23b3390b186f",
   "calcore.py": "59260d1c924b332421b84af9389e007e8c6df234ff75e4f74739bfff62ab9f88",
   "stores.py": "afff34cc774f94ec0fa15138d3a531e513b728f89917ca1068247843f24f55fd",
   "updater.py": "9c9ec4f7812ad6c959dc6a1f96d2f85ccb02fc224b0e6097db8f8db3a9bf1ddf",
-  "ui/index.html": "af2488074b634278a82f10770a168b5ffbbf4a5ad70689ac4c0b13f32b66ef5d",
+  "ui/index.html": "f3ce563ccb116175718f0ce8dd5bb770185d56f7a538235cf8b6b1d7f06f05e9",
   "requirements.txt": "95d785dc259213ecf7c0e1d57aa54fb13bbbefcbedadab8cf8fbd6e7538d15f1",
   "README.md": "2167f517f5ca22f7488e3f2256fd2dff4a408c238357ebda33ab286b6e70252a",
   "install.py": "275f274f25a4f7f456b62b4b0e9b22a1357612f2c237e3720191ab517d3b3bdf",

@@ -323,7 +323,7 @@ body.dragging .blk:hover,body.dragging .chip:hover{filter:none}
     <div class="pane-h"><b id="pTitle">일정</b><button class="icon" id="pClose" title="닫기 (Esc)">×</button></div>
     <div class="pane-b">
       <div class="fld"><label>제목</label><input class="in" id="fTitle" placeholder="무엇을 하나요?"></div>
-      <div class="fld" style="display:flex;gap:18px"><label class="chk"><input type="checkbox" id="fAllDay"> 종일</label>
+      <div class="fld" style="display:flex;gap:18px"><label class="chk"><input type="checkbox" id="fAllDay"> 📌 시간 없이</label>
         <label class="chk" id="fDoneLb"><input type="checkbox" id="fDone"> 완료</label></div>
       <div class="fld"><span class="lb">시작</span><div class="row"><input class="in" type="date" id="fDate"><input class="in tmf" type="time" id="fTime"></div></div>
       <div class="fld"><span class="lb">끝</span><div class="row"><input class="in" type="date" id="fEndDate"><input class="in tmf" type="time" id="fEndTime" title="비워 두면 끝 시간 없이 시작 시각만 넣어요"></div></div>
@@ -571,7 +571,7 @@ function evRow(ev) {
   const past = isPast(ev), t = today();
   const now = !past && !ev.done && ev.time && ev.date === iso(t) && mins(ev.time) <= nowMin();
   const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", now ? "now" : "", ev.done ? "done" : ""].join(" ");
-  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "종일";
+  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "📌";
   const meta = evMeta(ev);
   return `<div class="${cls}" data-id="${esc(ev.id)}">${ck(ev)}<div class="bar"></div><div class="tm">${tm}</div>
     <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>
@@ -639,7 +639,7 @@ function renderWeek() {
   const cls = d => (wday(d) === 6 ? "sun" : wday(d) === 5 ? "sat" : "") + (iso(d) === td ? " today" : "");
   let h = `<div class="wk"><div class="wk-row"><div class="gut" style="border:0"></div>` +
     days.map(d => `<div class="wh ${cls(d)}">${WD[wday(d)]}<b><span>${d.getDate()}</span></b></div>`).join("") + `</div>`;
-  h += `<div class="wk-row"><div class="gut" style="padding-top:5px">종일</div>` + days.map(d => {
+  h += `<div class="wk-row"><div class="gut" style="padding-top:5px" title="시간 없는 일정">📌</div>` + days.map(d => {
     const k = iso(d);
     const chips = S.events.filter(e => !e.time && e.date <= k && e.end_date >= k)
       .map(e => `<div class="chip allday ${e.recurring ? "rep" : ""} ${isPast(e) ? "past" : ""} ${e.done ? "done" : ""}" data-id="${esc(e.id)}" title="${esc(e.title)}">${ck(e, true)}${esc(e.title)}</div>`).join("");
@@ -912,7 +912,7 @@ async function deleteEvent(id) {   // 목록의 × · 오른쪽 클릭 '삭제�
   const ev = S.events.find(e => e.id === id);
   if (!ev) return;
   if (ev.recurring) { await openPanel(id); return deletePanel(); }
-  if (!(await askDelete([`${dlabel(parse(ev.date))} ${ev.time || "종일"} ${ev.title}`]))) return;
+  if (!(await askDelete([`${dlabel(parse(ev.date))} ${ev.time || "📌"} ${ev.title}`]))) return;
   const r = await api.remove(ev.id, "one", ev.title);
   if (!r.ok) return setStatus(r.error, "err");
   setStatus(r.reply, "ok");
@@ -1376,7 +1376,7 @@ function dropTarget(x, y) {
   const date = d.dataset.day || d.dataset.new || d.dataset.dday;
   if (s.kind === "ev") {   // 잡은 날 → 놓은 날만큼 옮긴다 (여러 날 일정은 통째로)
     const shift = Math.round((parse(date) - parse(s.from)) / 864e5);
-    return {el: d, kind: "move", shift, label: shift ? `→ ${dlabel(addDays(parse(s.ev.date), shift))} ${s.ev.time || "종일"}` : "제자리"};
+    return {el: d, kind: "move", shift, label: shift ? `→ ${dlabel(addDays(parse(s.ev.date), shift))} ${s.ev.time || "📌"}` : "제자리"};
   }
   let time = null;
   if (d.dataset.day) {   // 주간의 시간 칸: 놓은 높이의 시각 (30분 단위)
@@ -1384,7 +1384,7 @@ function dropTarget(x, y) {
     const m = Math.max(0, Math.min(23 * 60 + 30, Math.floor((y - r.top) / (r.height / 24) * 2) * 30));
     time = `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
   }
-  return {el: d, kind: "task", date, time, label: `→ ${dlabel(parse(date))} ${time || "종일"} 일정`};
+  return {el: d, kind: "task", date, time, label: `→ ${dlabel(parse(date))} ${time || "📌"} 일정`};
 }
 function markSrc(on) {
   const s = DRAG.src;
