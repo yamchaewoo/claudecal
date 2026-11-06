@@ -1593,6 +1593,7 @@ window.__emit = (kind, d) => {
   }
   else if (kind === "toast_fallback") { banner(`🔔 ${d.title}${d.msg ? " · " + d.msg : ""}`); if (S.mini) $("#fab").classList.add("alert"); }
   else if (kind === "status") setStatus(d.text, d.warn ? "warn" : "dim");
+  else if (kind === "changed") refresh();   // 뒤에서 일정이 바뀜 (반복 일정 색 주기 등)
   else if (kind === "update_ready") banner(`새 버전을 받았어요 (${d.version}). 창을 접으면 다시 켜지면서 바뀌어요.`, "지금 다시 켜기", () => api.restart());
 };
 function q_focus() { setTimeout(() => $("#q").focus(), 30); }

@@ -667,6 +667,21 @@ class Api:
             self._window.destroy()
 
     # ----- 알림 -----
+    def _color_loop(self):
+        """구글 연결이면 켜고 30초 뒤·1시간마다: 색 없는 반복 일정에 안 겹치는 색 주기 (구글 캘린더에도)"""
+        time.sleep(30)
+        while not self._really_quit:
+            try:
+                if self._store.kind == "google":
+                    with self._lock:
+                        n = self._store.color_series()
+                    if n:
+                        self._soon_at = 0
+                        self._emit("changed")
+            except Exception:
+                pass
+            time.sleep(3600)
+
     def _notify_loop(self):
         while not self._really_quit:
             try:
@@ -771,6 +786,7 @@ class Api:
         threading.Thread(target=self._notify_loop, daemon=True).start()
         threading.Thread(target=self._warm_up, daemon=True).start()
         threading.Thread(target=self._update_loop, daemon=True).start()
+        threading.Thread(target=self._color_loop, daemon=True).start()
         if IS_WIN:
             threading.Thread(target=self._hotkey_loop, daemon=True).start()
             threading.Thread(target=self._open_request_loop, daemon=True).start()

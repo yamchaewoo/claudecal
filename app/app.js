@@ -143,9 +143,28 @@ async function getEvent(id) {
   return u;
 }
 
+async function newSeriesColor() {   // 새 반복 일정 색: 지난 1주~앞으로 8주의 다른 반복 일정과 안 겹치게 (PC와 같은 규칙)
+  try {
+    const today = C.isoD(new Date()), seen = new Map();
+    let pageToken = null;
+    do {
+      const res = await google("GET", "events", {query: {timeMin: C.parseD(C.addDays(today, -7)).toISOString(), timeMax: C.parseD(C.addDays(today, 56)).toISOString(),
+        singleEvents: "true", orderBy: "startTime", maxResults: 250, pageToken, fields: "nextPageToken,items(recurringEventId,colorId,status)"}});
+      for (const e of res.items || []) if (e.recurringEventId && e.status !== "cancelled" && !seen.has(e.recurringEventId)) seen.set(e.recurringEventId, e.colorId || null);
+      pageToken = res.nextPageToken;
+    } while (pageToken);
+    return C.pickSeriesColor([...seen.values()].filter(Boolean));
+  } catch (e) {
+    if (e instanceof NeedAuth) throw e;
+    return null;   // 색은 못 정해도 일정은 넣는다
+  }
+}
+
 // 바꾸는 함수는 되돌리기 기록(list)을 돌려준다 — 위젯의 GoogleStore와 같은 규칙
 async function gAdd(spec) {
-  const c = await google("POST", "events", {body: C.toGoogle(spec)});
+  const body = C.toGoogle(spec);
+  if (spec.rrule) { const color = await newSeriesColor(); if (color) body.colorId = color; }
+  const c = await google("POST", "events", {body});
   return [{t: "delete", id: c.id}];
 }
 async function gUpdate(eid, spec, scope) {
@@ -171,6 +190,7 @@ async function gUpdate(eid, spec, scope) {
   }
   const body = C.toGoogle(spec, true);
   if (!spec.rrule && ev.recurrence) body.recurrence = null;
+  if (spec.rrule && !ev.recurrence && !ev.colorId) { const color = await newSeriesColor(); if (color) body.colorId = color; }   // 단일 → 반복이면 색도
   await google("PATCH", evPath(eid), {body});
   const snap = C.snapshot(ev);
   if (!("recurrence" in snap)) snap.recurrence = null;

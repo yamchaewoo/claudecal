@@ -1,15 +1,15 @@
 {
- "version": "2026.11.06.5",
- "notes": "기본 알림을 바꿔도 다시 30분으로 돌아가던 문제 고침",
+ "version": "2026.11.06.6",
+ "notes": "반복 일정끼리 안 겹치는 색을 자동으로 (구글 캘린더에도 같은 색)",
  "files": {
   "claude_cal.pyw": "6b879262740976e7d73f780ddb654443578ab6ef1af2752d6491f945e9428bdc",
-  "app_api.py": "e1caf06bf729a6688410ac4f3c12a35e6e13a38ecb43ed646d7913e8e4995d05",
+  "app_api.py": "f94fd591f02fd8a9b60d5e05419261746d232d1c383e6beed127776ea8f9dbae",
   "calcore.py": "59260d1c924b332421b84af9389e007e8c6df234ff75e4f74739bfff62ab9f88",
-  "stores.py": "6b7bde37e6221445dc652d6547eade2f71555d351a6feacd18c849af2ff0cee8",
+  "stores.py": "b6fedef7836c91486c096e50a6c5224acb1ab4bde62461c8c505991b5f8b3538",
   "updater.py": "9c9ec4f7812ad6c959dc6a1f96d2f85ccb02fc224b0e6097db8f8db3a9bf1ddf",
-  "ui/index.html": "cf0b01e62eff1ba439d64a2dc8d9b7e771c68559717d000475388bbb32107cd1",
+  "ui/index.html": "845dc042d337f921436a9718c58a50db819a65ada766c694e304004a2855197c",
   "requirements.txt": "95d785dc259213ecf7c0e1d57aa54fb13bbbefcbedadab8cf8fbd6e7538d15f1",
-  "README.md": "b8db67c3620db4dea0c0c07868df36197afbccfde3809e35584dc73c03107cd1",
+  "README.md": "4c2447ffaeeecb272a75525b588dd6810178e57472db421bbf89388970a869c4",
   "install.py": "275f274f25a4f7f456b62b4b0e9b22a1357612f2c237e3720191ab517d3b3bdf",
   "install.bat": "92c7eafe3e6c5889542325d469e8259095886972f40b18f50b455e2ad56b933e"
  }

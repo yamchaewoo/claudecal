@@ -179,6 +179,13 @@ export function parseResponse(text) {
 // 구글 캘린더에서 일정마다 고르는 색 (colorId → 구글 캘린더 화면에 보이는 색). 안 골랐으면 null = 앱 기본색
 export const GOOGLE_COLORS = {1: "#7986cb", 2: "#33b679", 3: "#8e24aa", 4: "#e67c73", 5: "#f6bf26", 6: "#f4511e",
                               7: "#039be5", 8: "#616161", 9: "#3f51b5", 10: "#0b8043", 11: "#d50000"};
+// 반복 일정끼리 안 겹치게 주는 색 (구글 colorId, 앞에서부터). 주황(6 귤)·노랑(5 바나나)은 반복 아닌 일정 기본색이라 뺐다 — PC stores.py와 같게
+export const SERIES_COLORS = ["7", "2", "3", "9", "10", "1", "11", "4", "8"];
+export function pickSeriesColor(used) {   // 이미 쓰인 colorId들 → 가장 적게 쓰인 색 (같으면 앞 순서)
+  const cnt = Object.fromEntries(SERIES_COLORS.map(c => [c, 0]));
+  for (const c of used) if (c in cnt) cnt[c]++;
+  return SERIES_COLORS.reduce((best, c) => cnt[c] < cnt[best] ? c : best, SERIES_COLORS[0]);
+}
 export function fromGoogle(ev) {
   const s = ev.start || {}, e = ev.end || {};
   const out = {id: ev.id, series_id: ev.recurringEventId || null, title: ev.summary || "(제목 없음)",
@@ -242,6 +249,7 @@ export function snapshot(ev, recurrence = true) {
     snap[k] = {date: x.date ?? null, dateTime: x.dateTime ?? null, timeZone: x.timeZone ?? null};
   }
   if (recurrence && ev.recurrence) snap.recurrence = ev.recurrence;
+  if (ev.colorId) snap.colorId = ev.colorId;
   return snap;
 }
 

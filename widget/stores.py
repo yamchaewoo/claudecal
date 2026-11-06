@@ -320,6 +320,19 @@ GOOGLE_COLORS = {"1": "#7986cb", "2": "#33b679", "3": "#8e24aa", "4": "#e67c73",
                  "7": "#039be5", "8": "#616161", "9": "#3f51b5", "10": "#0b8043", "11": "#d50000"}
 
 
+# 반복 일정끼리 안 겹치게 주는 색 (구글 colorId, 앞에서부터). 주황(6 귤)·노랑(5 바나나)은 반복 아닌 일정 기본색이라 뺐다
+SERIES_COLORS = ["7", "2", "3", "9", "10", "1", "11", "4", "8"]   # 공작·세이지·포도·블루베리·바질·라벤더·토마토·플라밍고·흑연
+
+
+def pick_series_color(used):
+    """이미 반복 일정에 쓰인 colorId들 → 가장 적게 쓰인 색 (같으면 앞 순서). 9개를 넘으면 그때부터 겹친다"""
+    cnt = {c: 0 for c in SERIES_COLORS}
+    for c in used:
+        if c in cnt:
+            cnt[c] += 1
+    return min(SERIES_COLORS, key=lambda c: (cnt[c], SERIES_COLORS.index(c)))
+
+
 def from_google(ev, tz):
     s, e = ev.get("start", {}), ev.get("end", {})
     out = {"id": ev["id"], "series_id": ev.get("recurringEventId"), "title": ev.get("summary") or "(제목 없음)",
@@ -355,6 +368,8 @@ def _snapshot(ev, recurrence=True):
     """되돌리기용: 구글 이벤트의 바꿀 수 있는 칸을 통째로 (patch로 되돌릴 수 있게 빈 칸은 None)"""
     snap = {"summary": ev.get("summary"), "location": ev.get("location"), "description": ev.get("description"),
             "reminders": ev.get("reminders") or {"useDefault": True}}
+    if ev.get("colorId"):
+        snap["colorId"] = ev["colorId"]
     for k in ("start", "end"):
         x = ev.get(k, {})
         snap[k] = {"date": x.get("date"), "dateTime": x.get("dateTime"), "timeZone": x.get("timeZone")}
@@ -412,6 +427,7 @@ class GoogleStore:
         self.svc = None
         self.tsvc = None          # 구글 할 일 (할 일 권한을 받았을 때만)
         self.can_set_remind = False   # 구글 캘린더 기본 알림을 바꿀 권한
+        self._color_failed = set()    # 색을 못 바꾼 반복 일정
         self.default_remind = core.load_json(os.path.join(app_dir, "google.json"), {}).get("default_remind")   # 구글 기본 알림(분, -1=없음)
         self.email = core.load_json(os.path.join(app_dir, "google.json"), {}).get("email", "")
 
@@ -521,8 +537,53 @@ class GoogleStore:
         u["rrule_text"] = core.describe_rrule(u["rrule"], _d(md))
         return u
 
+    def _series_colors(self):
+        """지난 1주~앞으로 8주에 있는 반복 일정들 {반복 id: colorId 또는 None} (처음 나오는 순서)"""
+        today = core.now_local().date()
+        out, token = {}, None
+        while True:
+            res = self._api().list(
+                calendarId="primary", timeMin=_rfc(datetime.datetime.combine(today - datetime.timedelta(days=7), datetime.time(0))),
+                timeMax=_rfc(datetime.datetime.combine(today + datetime.timedelta(days=56), datetime.time(0))),
+                singleEvents=True, orderBy="startTime", maxResults=250, pageToken=token,
+                fields="nextPageToken,items(recurringEventId,colorId,status)").execute()
+            for e in res.get("items", []):
+                if e.get("recurringEventId") and e.get("status") != "cancelled":
+                    out.setdefault(e["recurringEventId"], e.get("colorId"))
+            token = res.get("nextPageToken")
+            if not token:
+                return out
+
+    def _new_series_color(self):
+        try:
+            return pick_series_color([c for c in self._series_colors().values() if c])
+        except Exception:
+            return None   # 색은 못 정해도 일정은 넣는다
+
+    def color_series(self):
+        """색 없는 반복 일정에 다른 반복 일정과 안 겹치는 색을 준다 (구글 캘린더에도 그 색으로). 바꾼 개수"""
+        series = self._series_colors()
+        used, n = [c for c in series.values() if c], 0
+        for sid, c in series.items():
+            if c or sid in self._color_failed:
+                continue
+            new = pick_series_color(used)
+            try:
+                self._api().patch(calendarId="primary", eventId=sid, body={"colorId": new}).execute()
+            except Exception:
+                self._color_failed.add(sid)   # 남이 만든 일정 등 못 바꾸는 건 다시 시도하지 않는다
+                continue
+            used.append(new)
+            n += 1
+        return n
+
     def add(self, spec):
-        created = self._api().insert(calendarId="primary", body=to_google(spec, self.tz_name)).execute()
+        body = to_google(spec, self.tz_name)
+        if spec.get("rrule"):   # 새 반복 일정: 다른 반복 일정과 안 겹치는 색
+            color = self._new_series_color()
+            if color:
+                body["colorId"] = color
+        created = self._api().insert(calendarId="primary", body=body).execute()
         return created["id"], [{"t": "delete", "id": created["id"]}]
 
     def update(self, eid, spec, scope):
@@ -549,6 +610,10 @@ class GoogleStore:
         body = to_google(spec, self.tz_name, patch=True)
         if not spec.get("rrule") and ev.get("recurrence"):
             body["recurrence"] = None
+        if spec.get("rrule") and not ev.get("recurrence") and not ev.get("colorId"):   # 단일 → 반복이 되면 색도 준다
+            color = self._new_series_color()
+            if color:
+                body["colorId"] = color
         self._api().patch(calendarId="primary", eventId=eid, body=body).execute()
         snap = _snapshot(ev)
         snap.setdefault("recurrence", None)

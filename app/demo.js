@@ -10,6 +10,7 @@ const allday = (id, title, day, extra = {}) => ({id, summary: title, status: "co
   start: {date: day}, end: {date: C.addDays(day, 1)}, reminders: {useDefault: true}, ...extra});
 
 const events = new Map();
+export const _events = events;   // 시험용: 넣은 일정 그대로 보기
 let seq = 1;
 for (const ev of [
   timed("d1", "스터디", D(0), "10:00", "12:00"),
@@ -24,7 +25,7 @@ events.set("rm", {id: "rm", summary: "수업", status: "confirmed", recurrence: 
                   start: {dateTime: `${D(-14)}T13:00:00`}, end: {dateTime: `${D(-14)}T14:30:00`}, reminders: {useDefault: true}});
 for (let i = -14; i < 30; i++) {
   const d = C.parseD(D(i));
-  if ([1, 3].includes(C.wday(d))) events.set(`rm_${D(i)}`, timed(`rm_${D(i)}`, "수업", D(i), "13:00", "14:30", {recurringEventId: "rm"}));
+  if ([1, 3].includes(C.wday(d))) events.set(`rm_${D(i)}`, timed(`rm_${D(i)}`, "수업", D(i), "13:00", "14:30", {recurringEventId: "rm", colorId: "7"}));
 }
 
 const merge = (a, b) => {
@@ -121,5 +122,6 @@ export async function fakeClaude(text, list) {
     time = `${String(h).padStart(2, "0")}:${/반/.test(m[0]) ? "30" : String(m[2] || 0).padStart(2, "0")}`;
   }
   const title = text.replace(/오늘|내일|모레|오전|오후|저녁|밤|\d{1,2}시(\s*\d{1,2}분|\s*반)?/g, "").replace(/\s+/g, " ").trim() || "새 일정";
-  return {actions: [{...blank, op: "add", title, date: day, time}], reply: ""};
+  const rrule = /매주/.test(text) ? "FREQ=WEEKLY" : null;   // 시험용: '매주' → 매주 반복
+  return {actions: [{...blank, op: "add", title: title.replace(/매주\s*/, "") || title, date: day, time, rrule}], reply: ""};
 }
