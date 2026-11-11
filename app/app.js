@@ -344,6 +344,9 @@ async function makePlan(data, sidMap) {
     if (a.op === "add") {
       const spec = C.normalize(a);
       if (spec) plan.push({op: "add", spec, desc: "추가 · " + C.describe(spec)});
+    } else if (a.op === "task") {   // 날짜 없는 할 일 (구글 할 일)
+      const title = String(a.title || "").split(/\s+/).join(" ").trim().slice(0, 300);
+      if (title) plan.push({op: "task", title, desc: "할 일 · " + title});
     } else if ((a.op === "update" || a.op === "delete") && sidMap[a.sid]) {
       const ev = sidMap[a.sid];
       const scope = ev.recurring && a.scope === "all" ? "all" : "one";
@@ -376,7 +379,7 @@ async function doAll(steps) {   // 차례로 하다가 실패하면 그때까지
   return batch;
 }
 const executePlan = plan => doAll(plan.map(p => () =>
-  p.op === "add" ? gAdd(p.spec) : p.op === "update" ? gUpdate(p.id, p.spec, p.scope) : gDelete(p.id, p.scope)));
+  p.op === "add" ? gAdd(p.spec) : p.op === "task" ? tAdd(p.title) : p.op === "update" ? gUpdate(p.id, p.spec, p.scope) : gDelete(p.id, p.scope)));
 
 // 꾹 눌러 옮기기 — 위젯의 move_event / event_to_task / task_to_event와 같은 규칙
 async function gMove(id, shift) {   // shift일만큼 옮긴다. 시간·길이는 그대로, 반복 일정은 이 회차만
@@ -457,9 +460,12 @@ async function run(plan, reply, text, quick = false) {
   const batch = await executePlan(plan);
   S.undo.push({desc: text, batch});
   S.undo = S.undo.slice(-30);
-  if (!reply)
-    reply = plan.map(p => p.desc.slice(p.desc.indexOf(" · ") + 3)).join(" / ") + (plan.every(p => p.op === "add") ? " 등록했어요" : " 처리했어요");
+  if (!reply) {
+    const items = plan.map(p => p.desc.slice(p.desc.indexOf(" · ") + 3)).join(" / ");
+    reply = plan.every(p => p.op === "task") ? "할 일에 넣었어요: " + items : items + (plan.every(p => p.op === "add") ? " 등록했어요" : " 처리했어요");
+  }
   setStatus((quick ? "⚡ " : "") + reply, "ok", true);
+  if (plan.some(p => p.op === "task")) refreshTasks();
   await refresh();
 }
 

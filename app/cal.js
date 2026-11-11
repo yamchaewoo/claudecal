@@ -268,6 +268,15 @@ export const gDay = x => x.date || isoD(new Date(x.dateTime));   // 구글 start
 const NEED_CLAUDE = /\?|취소|삭제|지워|지우|빼|미뤄|미루|당겨|바꿔|바꾸|변경|옮겨|옮기|수정|연기|뭐|무슨|언제|있어|있나|알려|보여|매일|매주|매달|매월|매년|마다|격주|반복|부터|까지|전에|에서|,|그리고|오늘부터/;
 const QWD = "월화수목금토일";
 const AM = ["오전", "아침", "새벽"], PM = ["오후", "점심", "저녁", "밤", "낮"];
+// 시간: '3시', '3시 반', '오후 3시 20분', '15:00', '3~5시', '3시~4시반'
+const QTIME = "(?:(\\d{1,2}):(\\d{2})|(\\d{1,2})\\s*시\\s*(?:(반)|(\\d{1,2})\\s*분)?|(\\d{1,2})(?=\\s*[~\\-]))";
+// 날짜·시각 낌새: 숫자, 상대 날짜, 요일, 때를 나타내는 말, '세시' 같은 우리말 시각 → 할 일로 넣지 않고 Claude에게
+const DATEISH = /\d|오늘|내일|낼|모레|글피|어제|그제|주말|이번\s*주|다음\s*주|담주|다다음|이번\s*달|다음\s*달|담달|월말|연말|내년|[월화수목금토일]요일|오전|오후|아침|점심|저녁|밤|새벽|정오|자정|[^가-힣](?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|열한|열두)\s*시(?![가-힣])/;
+function soonest(h, mi, nowMin, allowTomorrow) {   // 표시 없는 오늘의 h시 → 지금 이후로 가장 가까운 [며칠 뒤, [시, 분]]
+  const am = h % 12, cands = [[0, am], [0, am + 12], ...(allowTomorrow ? [[1, am]] : [])];
+  for (const [off, hh] of cands) if (off * 1440 + hh * 60 + mi >= nowMin) return [off, [hh, mi]];
+  return [0, [am + 12, mi]];   // 둘 다 지났는데 내일로 못 넘기면('오늘') 오늘 오후
+}
 
 function qHour(pfx, h, mi) {   // 오전/오후 표시와 상식으로 24시간제 [시, 분]. 애매하면 null
   if (h > 23 || mi > 59) return null;
@@ -286,7 +295,9 @@ function yearFor(today, mo, d) {   // 두 달보다 더 지난 날짜면 내년
 const hhmm = p => `${pad(p[0])}:${pad(p[1])}`;
 const cmp = (a, b) => a[0] * 60 + a[1] - (b[0] * 60 + b[1]);
 
-export function quickParse(text, today = isoD(new Date())) {
+// 날짜도 시각도 없으면('과제 마감') → 날짜 없는 할 일 {op: "task"}. 날짜 없이 시각만 있으면('10시 과제마감') → 오늘,
+// 오전/오후 표시가 없으면 지금 이후로 가장 가까운 쪽 (nowMin: 0시부터 센 분. 둘 다 지났으면 내일 오전)
+export function quickParse(text, today = isoD(new Date()), nowMin = new Date().getHours() * 60 + new Date().getMinutes()) {
   const s = " " + text.trim() + " ";
   if (s.length > 60 || NEED_CLAUDE.test(s)) return null;
   const dates = [];   // [시작, 끝, 날짜]
@@ -315,32 +326,50 @@ export function quickParse(text, today = isoD(new Date())) {
       dates.push([m.index + 1, m.index + m[0].length, addDays(today, ahead)]);
     }
   }
-  if (dates.length !== 1 || !dates[0][2]) return null;
-  const [a, b, day] = dates[0];
-  let rest = s.slice(0, a) + " " + s.slice(b);
-  // 날짜 바로 뒤의 요일 표시('11/20 금', '11/20(금)')는 맞는지 확인만
-  const mw = /^\s*\(?([월화수목금토일])(?:요일)?\)?(?![가-힣])/.exec(s.slice(b));
-  if (mw && !/^(이번|다음|담주|다다음)/.test(s.slice(a, b))) {
-    if (QWD.indexOf(mw[1]) !== wday(parseD(day))) return null;   // 날짜와 요일이 안 맞으면 Claude가 확인
-    rest = s.slice(0, a) + " " + s.slice(b + mw[0].length);
+  const undated = !dates.length;
+  let day, rest;
+  if (undated) {
+    if (!new RegExp(QTIME).test(s)) {   // 날짜도 시각도 없음 → 날짜 없는 할 일
+      if (DATEISH.test(s)) return null;   // '다음주 과제', '저녁 약속'처럼 때를 나타내는 말이 있으면 Claude에게
+      const title = s.replace(/\s+/g, " ").trim().replace(/^[ .·]+|[ .·]+$/g, "");
+      return /[가-힣A-Za-z]/.test(title) ? {op: "task", title: title.slice(0, 300)} : null;
+    }
+    [day, rest] = [today, s];
+  } else {
+    if (dates.length !== 1 || !dates[0][2]) return null;
+    const [a, b, d] = dates[0];
+    day = d;
+    rest = s.slice(0, a) + " " + s.slice(b);
+    // 날짜 바로 뒤의 요일 표시('11/20 금', '11/20(금)')는 맞는지 확인만
+    const mw = /^\s*\(?([월화수목금토일])(?:요일)?\)?(?![가-힣])/.exec(s.slice(b));
+    if (mw && !/^(이번|다음|담주|다다음)/.test(s.slice(a, b))) {
+      if (QWD.indexOf(mw[1]) !== wday(parseD(day))) return null;   // 날짜와 요일이 안 맞으면 Claude가 확인
+      rest = s.slice(0, a) + " " + s.slice(b + mw[0].length);
+    }
   }
   if (/\D\d{1,2}\s*일(?!정)/.test(rest)) return null;   // '20일' 같은 다른 날짜가 또 있음
 
-  // 시간: '3시', '3시 반', '오후 3시 20분', '15:00', '3~5시', '3시~4시반'
   const times = [];   // [시작, 끝, 오전/오후, 시, 분, 숫자만 있음]
-  const tre = /(오전|오후|아침|점심|저녁|밤|낮|새벽)?\s*(?:(\d{1,2}):(\d{2})|(\d{1,2})\s*시\s*(?:(반)|(\d{1,2})\s*분)?|(\d{1,2})(?=\s*[~\-]))/g;
+  const tre = new RegExp("(오전|오후|아침|점심|저녁|밤|낮|새벽)?\\s*" + QTIME, "g");
   for (const m of rest.matchAll(tre)) {
     const h = +(m[2] || m[4] || m[7]), mi = +(m[3] || (m[5] ? 30 : (m[6] || 0)));
     let pfx = m[1] || null;
     if (!pfx && m[2] && m[2].length === 2 && h < 12) pfx = "오전";   // '09:30'처럼 두 자리로 쓴 24시간제
     times.push([m.index, m.index + m[0].length, pfx, h, mi, !!m[7]]);
   }
+  // 오늘 일정(날짜 없이 적었거나 '오늘')의 표시 없는 1~12시 → 지금 이후로 가장 가까운 오전/오후
+  const soon = undated || day === today;
+  let off = 0;
+  const hour = (pfx, h, mi) => {
+    if (soon && !pfx && h >= 1 && h <= 12 && mi <= 59) { const [o, hm] = soonest(h, mi, nowMin, undated); off = o; return hm; }
+    return qHour(pfx, h, mi);
+  };
   let start = null, end = null;
   if (times.length === 1) {
-    start = times[0][5] ? null : qHour(times[0][2], times[0][3], times[0][4]);
+    start = times[0][5] ? null : hour(times[0][2], times[0][3], times[0][4]);
     if (!start) return null;
   } else if (times.length === 2 && !times[1][5] && /^\s*[~\-]\s*$/.test(rest.slice(times[0][1], times[1][0]))) {
-    start = qHour(times[0][2] || times[1][2], times[0][3], times[0][4]);
+    start = hour(times[0][2] || times[1][2], times[0][3], times[0][4]);
     if (!start) return null;
     let eh = times[1][3];
     const emi = times[1][4];
@@ -353,9 +382,10 @@ export function quickParse(text, today = isoD(new Date())) {
   } else if (times.length) return null;
   for (const tm of [...times].reverse()) rest = rest.slice(0, tm[0]) + " " + rest.slice(tm[1]);
   if (/\d\s*(시|분|일|월|:|\/|~)/.test(rest)) return null;   // 남은 시간·날짜 조각이 있으면 애매
+  if (undated && DATEISH.test(rest)) return null;   // '다음주 3시 회의'처럼 날짜 낌새가 남아 있으면 Claude에게
   let title = rest.replace(/(^|\s)(에는|에|은|는|날|쯤|경|[~\-])(?=\s|$)/g, "$1 ");
   title = title.replace(/\s+/g, " ").trim().replace(/^[ .·]+|[ .·]+$/g, "");
   if (!/[가-힣A-Za-z]/.test(title)) return null;
-  return {op: "add", title, date: day, time: start ? hhmm(start) : null, end_time: end ? hhmm(end) : null,
+  return {op: "add", title, date: addDays(day, off), time: start ? hhmm(start) : null, end_time: end ? hhmm(end) : null,
           end_date: null, location: "", note: "", rrule: null, remind: null};
 }
