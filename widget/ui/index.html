@@ -104,6 +104,7 @@ footer span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #tq{flex:1;border:0;background:transparent;outline:none;padding:8px 0;min-width:0;user-select:text}
 #tq::placeholder{color:var(--dim2)}
 .icon.on{color:var(--accent)}
+.icon svg{width:17px;height:17px}
 
 /* 목록 */
 .list{padding:0 8px 12px}
@@ -118,7 +119,7 @@ footer span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ev .bar{width:3px;border-radius:3px;background:var(--accent);flex:none}
 .ev.allday .bar{background:var(--allday)}.ev.rep .bar{background:var(--rep)}
 .ev.cc .bar{background:var(--c)}   /* 구글 캘린더에서 고른 색 */
-.ev .tm{width:44px;flex:none;color:var(--fg2);font-variant-numeric:tabular-nums;font-size:12.5px}
+.ev .tm{flex:none;text-align:right;color:var(--fg2);font-variant-numeric:tabular-nums;font-size:12.5px}
 .ev .tm small{display:block;color:var(--dim2);font-size:11px}
 .ev.allday .tm{color:var(--allday)}
 .ev .bd{flex:1;min-width:0}
@@ -144,7 +145,7 @@ footer span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .empty p{margin:4px 0 10px}
 .ex{display:block;width:100%;text-align:left;border:1px dashed var(--line);background:transparent;color:var(--fg2);border-radius:8px;padding:7px 10px;margin:6px 0}
 .ex:hover{border-color:var(--accent);color:var(--fg)}
-.noev{padding:2px 8px 4px 62px;color:var(--dim2);font-size:12px}
+.noev{padding:2px 8px 4px 48px;color:var(--dim2);font-size:12px}   /* 제목 시작 자리와 맞춤 */
 
 /* 주간 */
 .wk{display:flex;flex-direction:column;height:100%}
@@ -277,6 +278,7 @@ body.dragging .blk:hover,body.dragging .chip:hover{filter:none}
   <header>
     <span class="logo pywebview-drag-region">✱ 일정</span>
     <div class="spacer pywebview-drag-region"></div>
+    <button class="icon" id="doneBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
     <button class="icon" id="tasksBtn" title="왼쪽 할 일 칸 켜기/끄기 (Ctrl+B)">☑</button>
     <div class="seg" id="viewSeg">
       <button data-v="list" title="목록 (Ctrl+1)">목록</button>
@@ -550,6 +552,11 @@ async function refresh() {
 function render() {
   document.querySelectorAll("#viewSeg button").forEach(b => b.classList.toggle("on", b.dataset.v === S.view));
   $("#nav").hidden = S.view === "list";
+  // 눈 버튼: 주황 = 완료한 일정도 보임, 회색 = 숨김 (☑처럼 색으로 켜짐/꺼짐)
+  const open = showDone(), nDone = S.events.filter(e => e.done).length;
+  S.shown = open ? S.events : S.events.filter(e => !e.done);
+  $("#doneBtn").classList.toggle("on", open);
+  $("#doneBtn").title = (open ? "완료한 일정 숨기기" : `완료한 일정 보이기${nDone ? ` (${nDone}개 숨김)` : ""}`) + " (Ctrl+H)";
   if (S.view === "list") renderList();
   else if (S.view === "week") renderWeek();
   else renderMonth();
@@ -578,10 +585,11 @@ function evRow(ev) {
   const past = isPast(ev), t = today();
   const now = !past && !ev.done && ev.time && ev.date === iso(t) && mins(ev.time) <= nowMin();
   const cls = ["ev", ev.time ? "" : "allday", ev.recurring ? "rep" : "", past ? "past" : "", now ? "now" : "", ev.done ? "done" : ""].join(" ") + gc(ev);
-  const tm = ev.time ? `${ev.time}${ev.end_time && ev.end_date === ev.date && !isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}` : "📌";
+  // 시간은 제목 오른쪽 (시간 없는 일정은 안 씀 — 노란 막대로 구분). 제목은 모두 막대 바로 옆에서 시작
+  const tm = ev.time ? `<div class="tm">${ev.time}${ev.end_time && ev.end_date === ev.date && !isPoint(ev) ? `<small>~${ev.end_time}</small>` : ""}</div>` : "";
   const meta = evMeta(ev);
-  return `<div class="${cls}" data-id="${esc(ev.id)}"${ev.color ? ` style="${gcVar(ev)}"` : ""}>${ck(ev)}<div class="bar"></div><div class="tm">${tm}</div>
-    <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>
+  return `<div class="${cls}" data-id="${esc(ev.id)}"${ev.color ? ` style="${gcVar(ev)}"` : ""}>${ck(ev)}<div class="bar"></div>
+    <div class="bd"><div class="tt">${esc(ev.title)}</div>${meta ? `<div class="mt">${esc(meta)}</div>` : ""}</div>${tm}
     <button class="ev-x" data-evdel="${esc(ev.id)}" title="삭제">×</button></div>`;
 }
 function renderList() {
@@ -592,7 +600,7 @@ function renderList() {
     h += `<div class="qhead"><button class="link" id="qBack">← 다가오는 일정</button><b>${same ? dlabel(f) : dlabel(f) + " ~ " + dlabel(t)} 일정</b></div>`;
   }
   const byDay = new Map(), tk = iso(td), fk = iso(f);
-  for (const ev of S.events) {
+  for (const ev of S.shown) {
     let d = ev.date;   // 범위 전에 시작해 이어지는 일정은 첫날(다가오는 일정이면 오늘)에, 이미 끝난 지난 일정은 제날짜에
     if (S.query) { if (d < fk) d = fk; }
     else if (ev.end_date >= tk && d < tk) d = tk;
@@ -605,8 +613,8 @@ function renderList() {
   if (!S.events.length && !S.query) {
     h += `<div class="empty" data-dday="${tk}"><p>다가오는 일정이 없어요. 위 칸에 대충 적고 Enter — 이런 식으로요:</p>` +
       EXAMPLES.map(x => `<button class="ex" data-ex="${esc(x)}">${esc(x)}</button>`).join("") + `</div>`;
-  } else if (!S.events.length) {
-    h += `<div class="empty">일정이 없어요.</div>`;
+  } else if (!S.shown.length && S.query) {   // 다가오는 일정 목록은 '오늘 · 일정 없음' 칸이 남는다 (끌어다 놓을 자리)
+    h += `<div class="empty">${S.events.length ? "완료한 일정만 있어요 (눈 버튼으로 보이기)" : "일정이 없어요."}</div>`;
   } else {
     for (const d of days) {
       const dd = parse(d), diff = Math.round((dd - td) / 864e5);
@@ -648,7 +656,7 @@ function renderWeek() {
     days.map(d => `<div class="wh ${cls(d)}">${WD[wday(d)]}<b><span>${d.getDate()}</span></b></div>`).join("") + `</div>`;
   h += `<div class="wk-row"><div class="gut" style="padding-top:5px" title="시간 없는 일정">📌</div>` + days.map(d => {
     const k = iso(d);
-    const chips = S.events.filter(e => !e.time && e.date <= k && e.end_date >= k)
+    const chips = S.shown.filter(e => !e.time && e.date <= k && e.end_date >= k)
       .map(e => `<div class="chip allday ${e.recurring ? "rep" : ""} ${isPast(e) ? "past" : ""} ${e.done ? "done" : ""}${gc(e)}" style="${gcVar(e)}" data-id="${esc(e.id)}" title="${esc(e.title)}">${ck(e, true)}${esc(e.title)}</div>`).join("");
     return `<div class="wa" data-new="${k}">${chips}</div>`;
   }).join("") + `</div>`;
@@ -657,7 +665,7 @@ function renderWeek() {
     [...Array(23)].map((_, i) => `<span style="top:calc(var(--hour) * ${i + 1})">${i + 1 < 12 ? "오전 " + (i + 1) : i + 1 === 12 ? "오후 12" : "오후 " + (i - 11)}</span>`).join("") + `</div>`;
   for (const d of days) {
     const k = iso(d), blocks = [];
-    for (const e of S.events) {
+    for (const e of S.shown) {
       if (!e.time || e.date > k || e.end_date < k) continue;
       const s = e.date === k ? mins(e.time) : 0, pt = isPoint(e);
       let en = pt ? Math.min(s + PT_MIN, 1440) : e.end_date === k ? mins(e.end_time || e.time) : 1440;
@@ -689,7 +697,7 @@ function renderMonth() {
   let h = `<div class="mo"><div class="mo-head">${WD.map(w => `<div>${w}</div>`).join("")}</div><div class="mo-grid">`;
   for (let i = 0; i < 42; i++) {
     const d = addDays(start, i), k = iso(d);
-    const evs = S.events.filter(e => e.date <= k && e.end_date >= k);
+    const evs = S.shown.filter(e => e.date <= k && e.end_date >= k);
     const cls = ["md", d.getMonth() !== a.getMonth() ? "other" : "", k === td ? "today" : "", wday(d) === 6 ? "sun" : wday(d) === 5 ? "sat" : ""].join(" ");
     const show = evs.slice(0, 3);
     h += `<div class="${cls}" data-new="${k}"><span class="num">${d.getDate()}</span>` +
@@ -799,6 +807,15 @@ async function toggleDone(id) {
   if (!r.ok) { paintDone(id, !done); setStatus(r.error, "err"); return; }
   setStatus((done ? "완료했어요: " : "완료를 취소했어요: ") + ev.title, "ok", true);
   updateFab();
+  if (done && !showDone()) render();   // 완료 일정을 숨기는 중이면 체크한 일정은 빠진다 (Ctrl+Z로 되돌리기)
+}
+// 눈 버튼: 완료한 일정 보이기/숨기기 (설정에 저장)
+const showDone = () => S.st?.conf?.show_done !== false;
+async function toggleShowDone() {
+  const r = await api.set_settings({show_done: !showDone()});
+  if (!r.ok) return setStatus(r.error, "err");
+  S.st = r.state;
+  render();
 }
 
 // ---------- 상세 창 ----------
@@ -984,6 +1001,7 @@ async function openSettings() { S.st = await api.state(); fillSettings(); $("#se
 function bind() {
   document.querySelectorAll("#viewSeg button").forEach(b => b.onclick = () => setView(b.dataset.v));
   $("#hideBtn").onclick = collapse;
+  $("#doneBtn").onclick = toggleShowDone;
   $("#menuBtn").onclick = e => {
     const m = $("#menu"), r = e.currentTarget.getBoundingClientRect();
     $("#mGcal").hidden = S.st?.store !== "google";
@@ -1167,6 +1185,7 @@ function bind() {
     if (e.ctrlKey && ["Digit1", "Digit2", "Digit3"].includes(e.code)) { e.preventDefault(); return setView(["list", "week", "month"][Number(e.code.slice(-1)) - 1]); }
     if (e.key === "F5") { e.preventDefault(); return refresh(); }
     if (e.ctrlKey && e.code === "KeyB") { e.preventDefault(); return toggleTasks(); }
+    if (e.ctrlKey && e.code === "KeyH") { e.preventDefault(); return toggleShowDone(); }
     if (!inField && S.view !== "list") {
       if (e.key === "ArrowLeft") return move(-1);
       if (e.key === "ArrowRight") return move(1);

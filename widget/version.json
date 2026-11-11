@@ -1,15 +1,15 @@
 {
- "version": "2026.11.06.6",
- "notes": "반복 일정끼리 안 겹치는 색을 자동으로 (구글 캘린더에도 같은 색)",
+ "version": "2026.11.11.1",
+ "notes": "완료 일정 숨기기(눈 버튼·Ctrl+H) · 목록 시간은 제목 오른쪽 · '과제 마감'은 할 일로, '10시 과제'는 오늘 안 지난 시각으로",
  "files": {
   "claude_cal.pyw": "6b879262740976e7d73f780ddb654443578ab6ef1af2752d6491f945e9428bdc",
-  "app_api.py": "f94fd591f02fd8a9b60d5e05419261746d232d1c383e6beed127776ea8f9dbae",
-  "calcore.py": "59260d1c924b332421b84af9389e007e8c6df234ff75e4f74739bfff62ab9f88",
+  "app_api.py": "1520b32207cd9ca313831ddc09e7ed3efa058173d7d9286710345c379404bac1",
+  "calcore.py": "f90a2675e5b684603e991413ded4c4e48dd260637a03309331401f7d2efed1a1",
   "stores.py": "b6fedef7836c91486c096e50a6c5224acb1ab4bde62461c8c505991b5f8b3538",
   "updater.py": "9c9ec4f7812ad6c959dc6a1f96d2f85ccb02fc224b0e6097db8f8db3a9bf1ddf",
-  "ui/index.html": "845dc042d337f921436a9718c58a50db819a65ada766c694e304004a2855197c",
+  "ui/index.html": "328e8e6c92b8a15b691eb05eefa3a2b0f9187f469c28e57475765ffa9a745372",
   "requirements.txt": "95d785dc259213ecf7c0e1d57aa54fb13bbbefcbedadab8cf8fbd6e7538d15f1",
-  "README.md": "4c2447ffaeeecb272a75525b588dd6810178e57472db421bbf89388970a869c4",
+  "README.md": "c68257e81aa71922c14b026bfdce41139f7e3920a4e54d5daf37328c40b1dc04",
   "install.py": "275f274f25a4f7f456b62b4b0e9b22a1357612f2c237e3720191ab517d3b3bdf",
   "install.bat": "92c7eafe3e6c5889542325d469e8259095886972f40b18f50b455e2ad56b933e"
  }

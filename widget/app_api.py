@@ -187,7 +187,8 @@ class Api:
             "engine": core.engine_name(c), "has_cli": bool(core.find_claude()),
             "api_key_hint": (key[:7] + "…" + key[-4:]) if len(key) > 12 else ("설정됨" if key else ""),
             "conf": {**{k: c[k] for k in ("hotkey", "engine", "model", "quick_parse", "confirm_delete", "notify",
-                                           "remind_min", "on_top", "days_ahead", "view", "tasks_panel", "auto_update")},
+                                           "remind_min", "on_top", "days_ahead", "view", "tasks_panel", "show_done",
+                                           "auto_update")},
                      "autostart": os.path.exists(startup_link())},   # 실제 시작 프로그램 바로가기가 있는지
             "version": updater.local_version(HERE), "dev": updater.is_dev(HERE),
             "update_ready": (self._update_ready or {}).get("version", ""), "just_updated": self._just_updated,
@@ -229,7 +230,7 @@ class Api:
         t0 = time.time()
         try:
             now = core.now_local()
-            quick = core.quick_parse(text, now.date()) if self._conf.get("quick_parse", True) else None
+            quick = core.quick_parse(text, now.date(), now.hour * 60 + now.minute) if self._conf.get("quick_parse", True) else None
             if quick:
                 data, sid_map = {"actions": [quick], "reply": ""}, {}
             else:
@@ -262,7 +263,8 @@ class Api:
             del self._undo[:-30]
             self._soon_at = 0
         if not reply:
-            reply = " / ".join(p["desc"].split(" · ", 1)[-1] for p in plan) + (" 등록했어요" if all(p["op"] == "add" for p in plan) else " 처리했어요")
+            items, ops = " / ".join(p["desc"].split(" · ", 1)[-1] for p in plan), {p["op"] for p in plan}
+            reply = ("할 일에 넣었어요: " + items) if ops == {"task"} else items + (" 등록했어요" if ops == {"add"} else " 처리했어요")
         return {"reply": reply, "done": [p["desc"] for p in plan], "can_undo": True}
 
     def confirm(self, token, yes):
@@ -329,7 +331,7 @@ class Api:
     # ----- 설정 -----
     def set_settings(self, changes):
         allowed = {"engine", "model", "quick_parse", "confirm_delete", "notify", "remind_min", "on_top",
-                   "days_ahead", "view", "hotkey", "autostart", "tasks_panel", "auto_update"}
+                   "days_ahead", "view", "hotkey", "autostart", "tasks_panel", "show_done", "auto_update"}
         changes = {k: v for k, v in (changes or {}).items() if k in allowed}
         if "remind_min" in changes and self._store.kind == "google":   # 구글 캘린더 기본 알림을 바꾼다 → 휴대폰·구글 앱도 같이
             try:
