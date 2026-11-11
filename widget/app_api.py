@@ -230,9 +230,9 @@ class Api:
         t0 = time.time()
         try:
             now = core.now_local()
-            quick = core.quick_parse(text, now.date(), now.hour * 60 + now.minute) if self._conf.get("quick_parse", True) else None
+            quick = core.quick_parse_all(text, now.date(), now.hour * 60 + now.minute) if self._conf.get("quick_parse", True) else None
             if quick:
-                data, sid_map = {"actions": [quick], "reply": ""}, {}
+                data, sid_map = {"actions": quick, "reply": ""}, {}
             else:
                 with self._lock:
                     near = self._store.list_range(now.date() - datetime.timedelta(days=7),

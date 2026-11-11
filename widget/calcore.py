@@ -451,6 +451,27 @@ def quick_parse(text, today, now_min=None):
             "end_date": None, "location": "", "note": "", "rrule": None, "remind": None}
 
 
+_SPLIT = re.compile(r"\s*[,，、]\s*")
+_DATE_WORDS = re.compile(r"\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}\s*/\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|"
+                         r"오늘|내일|모레|글피|이번\s*주|다음\s*주|담주|요일")
+
+
+def quick_parse_all(text, today, now_min=None):
+    """쉼표로 나눈 여러 항목('봉사활동 송금, 계획서 송부' → 할 일 2개, '3시 회의, 과제 마감' → 일정 + 할 일)도
+    하나하나가 단순하면 Claude 없이 바로 → [작업, …]. 하나라도 애매하면 None (→ Claude).
+    날짜를 적은 항목과 날짜 없이 시각만 적은 항목이 섞이면('내일 3시 회의, 5시 회식') 같은 날인지 애매해서 Claude에게."""
+    parts = [p for p in _SPLIT.split(text.strip()) if p]
+    if not parts or len(parts) > 10:
+        return None
+    acts = [quick_parse(p, today, now_min) for p in parts]
+    if not all(acts):
+        return None
+    if len(parts) > 1 and any(_DATE_WORDS.search(p) for p in parts) and \
+            any(a["op"] == "add" and a["time"] and not _DATE_WORDS.search(p) for p, a in zip(parts, acts)):
+        return None
+    return acts
+
+
 # ---------------- Claude 호출 ----------------
 def find_claude():
     p = shutil.which("claude")
@@ -534,7 +555,7 @@ SYSTEM_PROMPT = """너는 사용자의 캘린더 비서다. 사용자가 대충 
 
 CLI_HINT = """
 
-출력은 아래 모양의 JSON 객체 하나만. 코드블록·설명 금지. 도구나 파일은 쓰지 마라.
+출력은 아래 모양의 JSON 객체 하나만. 코드블록·설명 금지. 도구나 파일은 쓰지 마라. op는 add·task·update·delete·query 중 하나.
 {"actions": [{"op": "add", "sid": null, "scope": null, "title": "...", "date": "YYYY-MM-DD", "time": "HH:MM 또는 null", "end_date": null, "end_time": null, "location": null, "note": null, "rrule": null, "remind": null, "from": null, "to": null}], "reply": "..."}"""
 
 

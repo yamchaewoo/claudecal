@@ -404,7 +404,7 @@ async function submit(text) {
   text = (text ?? $("#q").value).trim();
   if (!text || S.busy) return;
   if (S.tab === "tasks") return addTask(text);   // 할 일은 Claude 없이 그대로 적는다
-  const quick = C.quickParse(text);   // ⚡ '내일 3시 치과' 같은 단순한 등록은 Claude 없이 바로 (PC와 같은 규칙)
+  const quick = C.quickParseAll(text);   // ⚡ '내일 3시 치과', '과제 마감, 책 반납' 같은 단순한 등록은 Claude 없이 바로 (PC와 같은 규칙)
   if (!quick && !S.key) { setStatus("이건 Claude가 읽어야 해요. 먼저 Claude API 키를 넣어 주세요. (‘내일 3시 치과’ 같은 단순한 등록은 키 없이도 돼요)", "warn"); render(); return; }
   if (!tokenOk()) {   // 토큰이 만료됐으면 글을 맡겨 두고 구글에 다녀온다
     if (!connected()) { setStatus("먼저 구글 캘린더를 연결해 주세요.", "warn"); render(); return; }
@@ -418,7 +418,7 @@ async function submit(text) {
   S.hIdx = -1;
   if (quick) {
     try {
-      const {plan} = await makePlan({actions: [quick], reply: ""}, {});
+      const {plan} = await makePlan({actions: quick, reply: ""}, {});
       setInput("");
       await run(plan, "", text, true);
     } catch (e) {
@@ -1150,7 +1150,7 @@ function resumePending() {   // 공유받았거나 구글 로그인 다녀오느
   if (!p) return;
   if (Date.now() - p.at > 10 * 60e3) { store.set("pending", null); return; }
   setInput(p.text);
-  if ((!S.key && !C.quickParse(p.text)) || !connected()) { setStatus("공유받은 글을 넣어 뒀어요. 위 설정을 마치면 등록할게요.", "warn"); return; }
+  if ((!S.key && !C.quickParseAll(p.text)) || !connected()) { setStatus("공유받은 글을 넣어 뒀어요. 위 설정을 마치면 등록할게요.", "warn"); return; }
   store.set("pending", null);
   submit(p.text);
 }

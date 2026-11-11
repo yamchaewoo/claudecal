@@ -389,3 +389,18 @@ export function quickParse(text, today = isoD(new Date()), nowMin = new Date().g
   return {op: "add", title, date: addDays(day, off), time: start ? hhmm(start) : null, end_time: end ? hhmm(end) : null,
           end_date: null, location: "", note: "", rrule: null, remind: null};
 }
+
+// 쉼표로 나눈 여러 항목('봉사활동 송금, 계획서 송부' → 할 일 2개, '3시 회의, 과제 마감' → 일정 + 할 일)도 하나하나가 단순하면
+// Claude 없이 바로 → [작업, …]. 하나라도 애매하면 null. 날짜를 적은 항목과 날짜 없이 시각만 적은 항목이 섞이면
+// ('내일 3시 회의, 5시 회식') 같은 날인지 애매해서 Claude에게 — PC의 calcore.quick_parse_all과 같은 규칙
+const QSPLIT = /\s*[,，、]\s*/;
+const DATE_WORDS = /\d{4}[-./]\d{1,2}[-./]\d{1,2}|\d{1,2}\s*\/\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|오늘|내일|모레|글피|이번\s*주|다음\s*주|담주|요일/;
+export function quickParseAll(text, today = isoD(new Date()), nowMin = new Date().getHours() * 60 + new Date().getMinutes()) {
+  const parts = text.trim().split(QSPLIT).filter(Boolean);
+  if (!parts.length || parts.length > 10) return null;
+  const acts = parts.map(p => quickParse(p, today, nowMin));
+  if (!acts.every(Boolean)) return null;
+  if (parts.length > 1 && parts.some(p => DATE_WORDS.test(p)) &&
+      acts.some((a, i) => a.op === "add" && a.time && !DATE_WORDS.test(parts[i]))) return null;
+  return acts;
+}
