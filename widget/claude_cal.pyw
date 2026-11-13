@@ -13,7 +13,9 @@ import ctypes
 import tempfile
 import traceback
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+FROZEN = bool(getattr(sys, "frozen", False))
+HERE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))   # 프로그램 폴더
+ROOT = getattr(sys, "_MEIPASS", HERE)   # 화면(ui) 파일이 있는 곳 — exe면 exe가 풀어 둔 임시 폴더
 sys.path.insert(0, ROOT)
 ERROR_LOG = os.path.join(tempfile.gettempdir(), "ClaudeCal_오류.txt")
 
@@ -23,22 +25,23 @@ def message(text):
 
 
 def wait_old_process():
-    """업데이트로 다시 켤 때(--wait-pid N): 옛 프로세스가 끝날 때까지 기다린다 (최대 20초)"""
-    if "--wait-pid" not in sys.argv:
-        return
-    i = sys.argv.index("--wait-pid")
-    try:
-        pid = int(sys.argv[i + 1])
-    except (IndexError, ValueError):
-        return
-    k32 = ctypes.windll.kernel32
-    k32.OpenProcess.restype = ctypes.c_void_p
-    k32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
-    k32.CloseHandle.argtypes = (ctypes.c_void_p,)
-    h = k32.OpenProcess(0x00100000, False, pid)   # SYNCHRONIZE
-    if h:
-        k32.WaitForSingleObject(h, 20000)
-        k32.CloseHandle(h)
+    """다시 켤 때(--wait-pid 1,2): 옛 프로세스가 끝날 때까지 기다린다 (exe 판은 swap_on_start가 함)"""
+    import updater
+    _, pids = updater.split_wait_args(sys.argv[1:])
+    if pids:
+        updater.wait_pids(pids, 20)
+
+
+def to_exe():
+    """파이썬 판인데 옆에 ClaudeCal.exe(갈아탈 새 판)가 있으면 그걸 켜고 True — 개발 폴더는 빼고"""
+    if FROZEN or os.path.isdir(os.path.join(HERE, "site")):
+        return False
+    exe = os.path.join(HERE, "ClaudeCal.exe")
+    if not os.path.exists(exe):
+        return False
+    import updater
+    updater.launch(exe, sys.argv[1:])
+    return True
 
 
 def single_instance():
@@ -61,7 +64,7 @@ def single_instance():
 
 def main():
     import importlib.util
-    missing = [pkg for mod, pkg in (("webview", "pywebview"), ("anthropic", "anthropic"), ("dateutil", "python-dateutil"),
+    missing = [] if FROZEN else [pkg for mod, pkg in (("webview", "pywebview"), ("anthropic", "anthropic"), ("dateutil", "python-dateutil"),
                                     ("googleapiclient", "google-api-python-client"),
                                     ("google_auth_oauthlib", "google-auth-oauthlib"))
                if importlib.util.find_spec(mod) is None]   # 불러오지 않고 있는지만 (anthropic은 불러오는 데 10초쯤 걸림)
@@ -111,7 +114,14 @@ def main():
 
 
 if __name__ == "__main__":
-    wait_old_process()
+    if FROZEN:
+        import updater
+        if updater.swap_on_start(sys.argv[1:]):   # 받아 둔 새 판으로 바꿔 넣고 새 exe를 띄웠음 → 바로 끝
+            sys.exit(0)
+    elif to_exe():
+        sys.exit(0)
+    else:
+        wait_old_process()
     if not single_instance():
         sys.exit(0)
     try:

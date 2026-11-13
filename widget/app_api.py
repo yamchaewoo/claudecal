@@ -25,9 +25,13 @@ IS_WIN = core.IS_WIN
 if IS_WIN:
     import ctypes.wintypes
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+FROZEN = updater.FROZEN   # exe로 켰는지 (PyInstaller)
+HERE = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))   # 프로그램 폴더
+RES = getattr(sys, "_MEIPASS", HERE)   # exe 안에 넣은 파일(화면·구글 열쇠)이 풀리는 곳
 APP_DIR = core.APP_DIR
 CLIENT_SECRET = os.path.join(HERE, "credentials.json")
+if FROZEN and not os.path.exists(CLIENT_SECRET) and os.path.exists(os.path.join(RES, "credentials.json")):
+    CLIENT_SECRET = os.path.join(RES, "credentials.json")   # exe 안에 넣어 둔 열쇠 (옆에 따로 두면 그게 먼저)
 WINDOW_TITLE = "ClaudeCal"
 OPEN_EVENT = "ClaudeCalOpenRequest"
 SIZES = {"button": (56, 56), "small": (380, 600), "big": (1040, 720)}
@@ -98,19 +102,44 @@ def startup_link():
     return os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs\Startup\ClaudeCal.lnk")
 
 
+def launch_target():
+    """이 프로그램을 다시 켜는 (실행 파일, 인수): exe 판은 exe, 파이썬 판은 pythonw + claude_cal.pyw
+    (파이썬 판인데 옆에 갈아탈 ClaudeCal.exe를 받아 뒀으면 그 exe)"""
+    if FROZEN:
+        return sys.executable, []
+    new_exe = os.path.join(HERE, updater.EXE_NAME)
+    if not updater.is_dev(HERE) and os.path.exists(new_exe):
+        return new_exe, []
+    exe = sys.executable
+    if exe.lower().endswith("python.exe"):
+        exe = exe[:-10] + "pythonw.exe"
+    return exe, [os.path.join(HERE, "claude_cal.pyw")]
+
+
+def fix_autostart():
+    """시작 프로그램 바로가기가 있는데 다른 것(옛 파이썬 판·옮기기 전 exe)을 켜면 지금 것으로 다시 만든다"""
+    link = startup_link()
+    if not os.path.exists(link):
+        return
+    exe, args = launch_target()
+    ps = "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:LNK); $s.TargetPath + '|' + $s.Arguments"
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], env=dict(os.environ, LNK=link),
+                       capture_output=True, text=True, creationflags=0x08000000, timeout=30)
+    target, _, cur_args = (r.stdout or "").strip().partition("|")
+    if os.path.normcase(target) != os.path.normcase(exe) or cur_args != subprocess.list2cmdline(args + ["--button"]):
+        set_autostart(True)
+
+
 def set_autostart(on):
     link = startup_link()
     if not on:
         if os.path.exists(link):
             os.remove(link)
         return
-    exe = sys.executable
-    if exe.lower().endswith("python.exe"):
-        exe = exe[:-10] + "pythonw.exe"
-    script = os.path.join(HERE, "claude_cal.pyw")
+    exe, args = launch_target()
     ps = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:LNK); $s.TargetPath=$env:EXE; "
-          "$s.Arguments='\"' + $env:SCRIPT + '\" --button'; $s.WorkingDirectory=$env:DIR; $s.Save()")   # 켤 때는 버튼으로만
-    env = dict(os.environ, LNK=link, EXE=exe, SCRIPT=script, DIR=HERE)
+          "$s.Arguments=$env:ARGS; $s.WorkingDirectory=$env:DIR; $s.Save()")
+    env = dict(os.environ, LNK=link, EXE=exe, ARGS=subprocess.list2cmdline(args + ["--button"]), DIR=HERE)   # 켤 때는 버튼으로만
     subprocess.run(["powershell", "-NoProfile", "-Command", ps], env=env, capture_output=True,
                    creationflags=0x08000000, timeout=30)
 
@@ -741,7 +770,12 @@ class Api:
         with self._update_lock:
             if self._update_ready:
                 return "새 버전을 받아 뒀어요. 창을 접으면 다시 켜져요."
-            r = updater.update(HERE, os.path.join(APP_DIR, "update_backup"))
+            if FROZEN:
+                r = updater.exe_update(updater.local_version(HERE))
+            else:   # 파이썬 판: 파일 업데이트가 먼저, 다 받았으면 exe로 갈아타기
+                r = updater.update(HERE, os.path.join(APP_DIR, "update_backup"))
+                if not r and not updater.is_dev(HERE):
+                    r = updater.migrate_exe(HERE)
             if not r:
                 return "최신 버전이에요."
             self._update_ready = r
@@ -775,19 +809,30 @@ class Api:
         """새 프로세스를 띄우고(이 프로세스가 끝나길 기다렸다 켜짐) 나는 끈다"""
         if self._update_ready:
             core.save_json(os.path.join(APP_DIR, "updated.json"), self._update_ready)
-        exe = sys.executable
-        if exe.lower().endswith("python.exe"):
-            exe = exe[:-10] + "pythonw.exe"
-        args = [exe, os.path.join(HERE, "claude_cal.pyw"), "--wait-pid", str(os.getpid())]
-        if self._mode == "button":
-            args.append("--button")
-        subprocess.Popen(args, cwd=HERE, creationflags=0x00000008 | 0x00000200)   # DETACHED_PROCESS | 새 프로세스 그룹
+        exe, args = launch_target()
+        pids = [os.getpid(), os.getppid()] if FROZEN else [os.getpid()]   # 한 파일 exe는 프로세스 둘
+        args += ["--wait-pid", ",".join(map(str, pids))] + (["--button"] if self._mode == "button" else [])
+        if exe.lower().endswith(".exe") and not exe.lower().endswith("pythonw.exe"):
+            updater.launch(exe, args)
+        else:
+            subprocess.Popen([exe, *args], cwd=HERE, creationflags=0x00000008 | 0x00000200)   # DETACHED_PROCESS | 새 프로세스 그룹
+        if not FROZEN and os.path.exists(startup_link()):
+            fix_autostart()   # 갈아탔으면 시작 프로그램도 exe로
         self.quit_app()
+
+    @staticmethod
+    def _fix_autostart():
+        try:
+            fix_autostart()
+        except Exception:
+            pass
 
     def start_background(self):
         threading.Thread(target=self._notify_loop, daemon=True).start()
         threading.Thread(target=self._warm_up, daemon=True).start()
         threading.Thread(target=self._update_loop, daemon=True).start()
+        if FROZEN:
+            threading.Thread(target=self._fix_autostart, daemon=True).start()
         threading.Thread(target=self._color_loop, daemon=True).start()
         if IS_WIN:
             threading.Thread(target=self._hotkey_loop, daemon=True).start()

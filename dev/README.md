@@ -16,12 +16,14 @@ ClaudeCal/                ← 새 폴더 (아무 데나)
 1. 새 폴더 `ClaudeCal` 안에서 `git clone https://github.com/yamchaewoo/claudecal.git site`
 2. `python site/dev/setup_dev.py`
 3. `credentials.json`을 원래 PC에서 받아 `ClaudeCal/`에 넣기 (공개된 곳에 올리지 말 것)
-4. `python -m pip install -r requirements.txt` → `claude_cal.pyw` 더블클릭
+4. `python -m pip install -r requirements.txt pyinstaller` → `claude_cal.pyw` 더블클릭
 
 ## 작업 흐름 (두 컴퓨터에서 번갈아 할 때)
 
 - **시작할 때**: `site`에서 `git pull` → `python site/dev/setup_dev.py` (다른 컴퓨터에서 올린 위젯 코드로 맞춤. 내용이 다른 파일은 `_backup_…/`에 남김)
-- **위젯을 고쳤으면**: `ClaudeCal`에서 `python make_release.py "바뀐 점 한 줄"` → `site`에서 커밋·푸시 (친구들 위젯은 6시간 안에 자동 업데이트)
+- **위젯을 고쳤으면**: `ClaudeCal`에서 `python make_release.py "바뀐 점 한 줄"` → 끝에 나오는 **강제 푸시 한 줄**(exe 저장소 `yamchaewoo/claudecal-app`, 늘 최신 판 하나) 실행 → `site`에서 커밋·푸시 (켜져 있는 위젯은 6시간 안에 새 exe를 받아 두고, 창을 접어 둔 사이 다시 켜짐)
+- **배포** (2026-11-13~): https://github.com/yamchaewoo/claudecal-app 첫 화면의 `ClaudeCal.exe` 하나 (파이썬·zip 필요 없음, `credentials.json`은 exe 안). 옛 파이썬 판(zip)은 `site/widget/` 업데이트를 받은 뒤 옆에 `ClaudeCal.exe`를 받아 갈아타고 시작 프로그램도 exe로 바꿈
+- exe 굽기만: `python make_exe.py` → `배포/ClaudeCal.exe`
 - **폰 앱을 고쳤으면**: `site/app/` 고치고 커밋·푸시 (앱 다시 열면 반영). `calcore.py`의 지시문을 바꿨으면 `python make_app_prompt.py`도
 - 위젯 코드는 `make_release.py`를 해야 `widget/`으로 넘어가요 — 안 올린 채 다른 컴퓨터로 가면 그쪽엔 없어요.
 - 시험: `site`에서 `python -m http.server 8765` → `http://localhost:8765/app/?demo=1` (가짜 구글·가짜 Claude)
@@ -29,7 +31,8 @@ ClaudeCal/                ← 새 폴더 (아무 데나)
 ## 함정 메모
 
 - `install.bat`은 **ASCII만** (한글 넣으면 친구 PC cmd에서 깨져 설치가 안 됨). 한글 안내는 `install.py`.
-- `credentials.json`은 깃허브·공개된 곳에 올리지 않기 (배포 zip에만).
+- `credentials.json` 파일 자체는 깃허브에 올리지 않기 (exe 안에만 넣음 — 사용자가 11/13 그렇게 고름). 없으면 `make_exe.py`가 멈춤.
+- exe 새 판 바꿔 넣기는 켤 때 맨 처음(`updater.swap_on_start`)에만 — 한 파일 exe는 돌면서도 exe에서 모듈을 읽어서, 돌 때 바꾸면 깨짐.
 - 빠른 등록(⚡)은 PC `calcore.quick_parse`와 폰 `site/app/cal.js quickParse`가 같은 규칙 — **한쪽을 고치면 다른 쪽도**. 반복 색(`SERIES_COLORS`)·구글 색 표(`GOOGLE_COLORS`)·알림 규칙도 PC `stores.py`와 폰 `cal.js`/`app.js`가 같아야 해요.
 - 구글 `calendarList.get`은 `primary`로 되지만 `patch`는 `primary`면 400(Invalid resource id) → get으로 받은 진짜 id로.
 - 기본 알림 = 구글 캘린더 기본 알림 하나(권한 `calendar.calendarlist`). 종일 일정은 알림 없이(`overrides: []`) — 기본값을 따르면 구글이 30분을 복사해 전날 밤 11시 반에 울림.

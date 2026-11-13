@@ -19,7 +19,7 @@ DEV = os.path.dirname(os.path.abspath(__file__))     # …/ClaudeCal/site/dev
 SITE = os.path.dirname(DEV)                          # …/ClaudeCal/site
 ROOT = os.path.dirname(SITE)                         # …/ClaudeCal  (개발 폴더)
 WIDGET = os.path.join(SITE, "widget")
-DEV_FILES = ["make_release.py", "make_app_prompt.py", "설치 방법 (먼저 읽기).txt"]
+DEV_FILES = ["make_release.py", "make_exe.py", "make_app_prompt.py", "icon.ico", "설치 방법 (먼저 읽기).txt"]
 
 
 def sha(p):

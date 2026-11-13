@@ -1,12 +1,13 @@
 {
- "version": "2026.11.11.2",
- "notes": "쉼표로 나눈 할 일·일정도 바로 등록 ('봉사활동 송금, 계획서 송부' → 할 일 2개)",
+ "version": "2026.11.13.1",
+ "notes": "이제 exe 하나로 — 파이썬 설치 없이, 새 판은 알아서",
  "files": {
-  "claude_cal.pyw": "6b879262740976e7d73f780ddb654443578ab6ef1af2752d6491f945e9428bdc",
-  "app_api.py": "86b773c79d52edb0f247aca30192417802b3cbf0b4fa71e7cde2ce56c15b3e44",
+  "claude_cal.pyw": "d697ac2cc9d77569fb796f937d8d198a25a65ed00669db57310e903677f83eef",
+  "app_api.py": "d3c29a4fd05b8bb4859c33811d3ff6dc7edb5efe202fd014451049560cb1883a",
   "calcore.py": "7bce542faa7775e1e786ab34de80c890877b6dddcb6ef2908d81a2814f74a1d9",
   "stores.py": "b6fedef7836c91486c096e50a6c5224acb1ab4bde62461c8c505991b5f8b3538",
-  "updater.py": "9c9ec4f7812ad6c959dc6a1f96d2f85ccb02fc224b0e6097db8f8db3a9bf1ddf",
+  "updater.py": "b931e16b8d3ab93083216e5a79cf7dae999f70da8b632fbf7651573cfb07efbf",
+  "version.py": "466ae17b71f479ee3afd88620fd84ef12f6cefc7416921f8ac22567b19553e08",
   "ui/index.html": "328e8e6c92b8a15b691eb05eefa3a2b0f9187f469c28e57475765ffa9a745372",
   "requirements.txt": "95d785dc259213ecf7c0e1d57aa54fb13bbbefcbedadab8cf8fbd6e7538d15f1",
   "README.md": "fd68ecbe169c617f636fbff85ad0e9cb977ee9d7d38184d952e5fc55e9d74247",
