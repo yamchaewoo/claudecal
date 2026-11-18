@@ -1,14 +1,14 @@
 {
- "version": "2026.11.13.1",
- "notes": "이제 exe 하나로 — 파이썬 설치 없이, 새 판은 알아서",
+ "version": "2026.11.18.1",
+ "notes": "일정 수정 창: 오전/오후를 누르면 바로 바뀜",
  "files": {
   "claude_cal.pyw": "d697ac2cc9d77569fb796f937d8d198a25a65ed00669db57310e903677f83eef",
   "app_api.py": "d3c29a4fd05b8bb4859c33811d3ff6dc7edb5efe202fd014451049560cb1883a",
   "calcore.py": "7bce542faa7775e1e786ab34de80c890877b6dddcb6ef2908d81a2814f74a1d9",
   "stores.py": "b6fedef7836c91486c096e50a6c5224acb1ab4bde62461c8c505991b5f8b3538",
   "updater.py": "b931e16b8d3ab93083216e5a79cf7dae999f70da8b632fbf7651573cfb07efbf",
-  "version.py": "466ae17b71f479ee3afd88620fd84ef12f6cefc7416921f8ac22567b19553e08",
-  "ui/index.html": "328e8e6c92b8a15b691eb05eefa3a2b0f9187f469c28e57475765ffa9a745372",
+  "version.py": "6cb5ca6e76c27d62c76354e16e56c6fe640688c040ced23dc1b579585d81549e",
+  "ui/index.html": "c70070fa0d5097f8dbde8c22fac40600b7fe004cc3f1a2774ad3d6684a7a9469",
   "requirements.txt": "95d785dc259213ecf7c0e1d57aa54fb13bbbefcbedadab8cf8fbd6e7538d15f1",
   "README.md": "fd68ecbe169c617f636fbff85ad0e9cb977ee9d7d38184d952e5fc55e9d74247",
   "install.py": "275f274f25a4f7f456b62b4b0e9b22a1357612f2c237e3720191ab517d3b3bdf",

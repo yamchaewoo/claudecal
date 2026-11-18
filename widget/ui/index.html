@@ -465,6 +465,18 @@ const S = {view: "list", anchor: null, mini: false, events: [], query: null, st:
 
 // ---------- 날짜 도우미 (월요일 = 0) ----------
 const pad = n => String(n).padStart(2, "0");
+function ampmHit(inp, e) {   // 시간 칸에서 누른 곳이 '오전/오후' 글자 위인지 (글자 폭을 재서)
+  const parts = new Intl.DateTimeFormat(navigator.language, { hour: "2-digit", minute: "2-digit", hour12: true })
+    .formatToParts(new Date(2000, 0, 1, 9, 0));
+  const i = parts.findIndex(p => p.type === "dayPeriod");
+  if (i < 0) return false;
+  const cs = getComputedStyle(inp), ctx = (ampmHit.ctx ||= document.createElement("canvas").getContext("2d"));
+  ctx.font = cs.font;
+  const w = s => ctx.measureText(s).width;
+  const x0 = parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth) + w(parts.slice(0, i).map(p => p.value).join(""));
+  const x = e.clientX - inp.getBoundingClientRect().left;
+  return x >= x0 - 4 && x <= x0 + w(parts[i].value) + 5;
+}
 const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -1088,6 +1100,15 @@ function bind() {
     }
     lastTime = $("#fTime").value;
   };
+  // 시간 칸의 '오전/오후'를 누르면 바로 바뀜 (원래는 누른 뒤 화살표를 또 눌러야 했음)
+  for (const inp of [$("#fTime"), $("#fEndTime")]) inp.addEventListener("mousedown", e => {
+    if (e.button !== 0 || !inp.value || !ampmHit(inp, e)) return;
+    e.preventDefault();
+    if (inp.id === "fTime") lastTime = inp.value;   // 끝 시간도 같이 옮기려고
+    const [h, m] = inp.value.split(":").map(Number);
+    inp.value = `${pad((h + 12) % 24)}:${pad(m)}`;
+    inp.dispatchEvent(new Event("change"));
+  });
 
   $("#sClose").onclick = () => { $("#settings").hidden = true; q.focus(); };
   $("#settings").addEventListener("mousedown", e => { if (e.target.id === "settings") { $("#settings").hidden = true; } });
